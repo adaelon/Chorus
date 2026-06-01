@@ -42,6 +42,7 @@ class GroupState(BaseModel):
     history: list[Msg] = Field(default_factory=list)
     candidates: list[Candidate] = Field(default_factory=list)
     picked: list[Candidate] = Field(default_factory=list)  # 人工策展选中的点/候选
+    output: str | None = None  # SYNTHESIZE 汇成的最终产出
     turns_since_human: int = 0
     max_turns_per_human: int = 6
     pending_human: Msg | None = None
