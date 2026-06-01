@@ -24,6 +24,7 @@ class Contact(SQLModel, table=True):
     persona_style: str = ""
     base_stance: str = ""
     bot_ref: str = ""  # AstrBot platform 实例 id（出站选 bot），S4 绑定
+    reputation: float = 0.0  # 软加权(§8.4)：人工 pick/eliminate 调整，非处决、可逆
     created_at: float = Field(default_factory=time.time)
 
 

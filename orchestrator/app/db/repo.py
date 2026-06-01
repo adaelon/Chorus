@@ -16,3 +16,20 @@ def persona_provider_from(session_factory):
             return await s.get(Contact, contact_id)
 
     return provider
+
+
+def reputation_adjuster_from(session_factory):
+    """用会话工厂造一个 reputation_adjuster：(contact_id, delta) 软加权。
+
+    只调整权重、绝不删除/处决 Contact（§8.4）；contact 不存在则忽略。
+    """
+
+    async def adjust(contact_id: str, delta: float) -> None:
+        async with session_factory() as s:
+            c = await s.get(Contact, contact_id)
+            if c is not None:
+                c.reputation += delta
+                s.add(c)
+                await s.commit()
+
+    return adjust

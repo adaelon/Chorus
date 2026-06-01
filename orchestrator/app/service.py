@@ -21,7 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from pydantic import BaseModel, Field
 
-from .nodes.curate import CurateCommand, Eliminate, Pick, Reassign, curate
+from .nodes.curate import CurateCommand, Eliminate, Pick, Reassign, ReputationAdjuster, curate
 from .nodes.frame import AssignFn
 from .nodes.generate import GenerateFn, PersonaProvider
 from .nodes.synthesize import synthesize
@@ -66,6 +66,7 @@ def create_app(
     assign: AssignFn | None = None,
     generate: GenerateFn | None = None,
     persona_provider: PersonaProvider | None = None,
+    reputation_adjuster: ReputationAdjuster | None = None,
     db_path: str = "group_checkpoints.sqlite",
 ) -> FastAPI:
     @asynccontextmanager
@@ -116,7 +117,11 @@ def create_app(
         state = await _load_state(graph, req.group_key)
         commands: list[CurateCommand] = list(req.commands)
         result = await curate(
-            state, commands, generate=generate, persona_provider=persona_provider
+            state,
+            commands,
+            generate=generate,
+            persona_provider=persona_provider,
+            reputation_adjuster=reputation_adjuster,
         )
         await graph.aupdate_state(_cfg(req.group_key), result)
         return result

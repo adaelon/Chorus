@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Literal
 
 from langchain_openai import ChatOpenAI
@@ -39,6 +39,11 @@ class Reassign(BaseModel):
 
 CurateCommand = Pick | Eliminate | Reassign
 
+# 信誉软加权（§8.4）：人工信号调整权重，非处决。
+ReputationAdjuster = Callable[[str, float], Awaitable[None]]
+PICK_DELTA = 1.0
+ELIMINATE_DELTA = -1.0
+
 
 def _find_candidate(candidates: list[Candidate], contact_id: str) -> Candidate | None:
     return next((c for c in candidates if c.contact_id == contact_id), None)
@@ -55,8 +60,12 @@ async def curate(
     model: ChatOpenAI | None = None,
     generate: GenerateFn | None = None,
     persona_provider: PersonaProvider | None = None,
+    reputation_adjuster: ReputationAdjuster | None = None,
 ) -> dict:
-    """按顺序 apply 指令，返回更新后的 candidates / picked。"""
+    """按顺序 apply 指令，返回更新后的 candidates / picked。
+
+    pick/eliminate 经 reputation_adjuster 做软加权（§8.4，非处决、可逆）。
+    """
     candidates = list(state.candidates)
     picked = list(state.picked)
     gen = generate or default_generator(model or make_chat_model(), persona_provider)
@@ -73,8 +82,12 @@ async def curate(
                     text=text,
                 )
             )
+            if reputation_adjuster:
+                await reputation_adjuster(cmd.contact_id, PICK_DELTA)
         elif isinstance(cmd, Eliminate):
             candidates = [c for c in candidates if c.contact_id != cmd.contact_id]
+            if reputation_adjuster:
+                await reputation_adjuster(cmd.contact_id, ELIMINATE_DELTA)
         elif isinstance(cmd, Reassign):
             slot = _find_slot(state.roster, cmd.executor_id) or AgentSlot(
                 contact_id=cmd.executor_id
