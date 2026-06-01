@@ -1,0 +1,41 @@
+"""S1.2: 配置加载。
+
+开发期复用 talk-agent 的 .env（用户指定）。优先读 os.environ；缺失时从
+sibling `talk-agent/.env` 补。生产环境应直接注入真实环境变量，不依赖该文件。
+可用 CHORUS_DOTENV 覆盖 .env 路径。
+"""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Chorus/orchestrator/app -> .../agent/talk-agent/.env
+_DEFAULT_DOTENV = Path(__file__).resolve().parents[3] / "talk-agent" / ".env"
+
+
+def _load_env() -> None:
+    dotenv_path = os.environ.get("CHORUS_DOTENV", str(_DEFAULT_DOTENV))
+    # override=False：已存在的真实环境变量优先，不被 .env 覆盖
+    load_dotenv(dotenv_path, override=False)
+
+
+@dataclass(frozen=True)
+class LLMSettings:
+    base_url: str
+    api_key: str
+    model: str
+    temperature: float = 0.75
+
+
+def load_llm_settings() -> LLMSettings:
+    _load_env()
+    return LLMSettings(
+        base_url=os.environ["LLM_BASE_URL"],
+        api_key=os.environ["LLM_API_KEY"],
+        model=os.environ["LLM_MODEL"],
+        temperature=float(os.environ.get("LLM_TEMPERATURE", "0.75")),
+    )

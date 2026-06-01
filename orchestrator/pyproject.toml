@@ -7,6 +7,9 @@ dependencies = [
     "langgraph>=1.2,<2",
     "langgraph-checkpoint-sqlite>=3.1,<4",
     "pydantic>=2.10,<3",
+    "langchain-openai>=1.2,<2",
+    "tenacity>=9,<10",
+    "python-dotenv>=1,<2",
 ]
 
 [dependency-groups]
