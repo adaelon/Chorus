@@ -69,6 +69,12 @@
 
 ## S2 持久层 + 混合身份 + 信誉
 
+**S2.0 服务 durable checkpointer**（还 S1.6 欠的债）
+- 做：服务 checkpointer 从 `MemorySaver` 换成 `AsyncSqliteSaver`（`langgraph.checkpoint.sqlite.aio`，加 `aiosqlite` 依赖）；用 FastAPI **lifespan** 进入其异步 context、在启动时建图挂 `app.state`、关闭时退出；`create_app` 改为 lifespan 内建图。
+- 不做：业务逻辑改动；Contact/Group/Message 落库（S2.1）。
+- 判据：`pytest` — 同一 db 文件"重启"（重建 app）后，之前 `/inbound` 的群 `candidates` 仍在（服务层版的 S1.1 判据）；`MemorySaver` 仍可注入给离线测试。
+- 起因：S1.6 服务用内存 checkpointer，重启丢群状态；编辑跨时间多轮策展不能丢。
+
 **S2.1 数据模型 + 迁移**
 - 做：`Contact`/`Group`/`Message` SQLModel schema（技术方案 §5）+ 建表/迁移。
 - 不做：信誉字段（留 S2.3）、人设注入、UI。
@@ -164,7 +170,7 @@
 ```
 S1.1 → S1.2 → {S1.3, S1.4} → S1.5 → S1.6 ──┬─→ S1.7 → S1.8        (扇出端到端可用)
                                             │
-S1.6 ─→ S2.1 → S2.2 → S2.3                  │   S2.4 需 S2.1 + 后端
+S1.6 ─→ S2.0(durable checkpointer) ; S2.1 → S2.2 → S2.3   │   S2.4 需 S2.1 + 后端
 S2.* ─→ S3.1 → S3.2 → S3.3(验收) → S3.4 → S3.5 ; S3.6/S3.7 需前端基座(S1.7)
 S3(引擎) ─→ S4.1 → S4.2 → S4.3 → S4.4 ; S4.5 需 S1.7
 ```
