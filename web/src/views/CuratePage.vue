@@ -35,7 +35,7 @@
           <v-card variant="outlined" height="100%">
             <v-card-title>{{ c.contact_id }}</v-card-title>
             <v-card-subtitle v-if="c.dimension">{{ c.dimension }}</v-card-subtitle>
-            <v-card-text style="white-space: pre-wrap">{{ c.text }}</v-card-text>
+            <v-card-text class="md-body" v-html="renderMd(c.text)" />
             <v-card-actions>
               <v-btn size="small" @click="pick(c.contact_id)">选中</v-btn>
               <v-btn size="small" color="error" @click="eliminate(c.contact_id)">淘汰</v-btn>
@@ -70,7 +70,7 @@
       <v-btn color="success" :loading="loading" @click="runSynthesize">汇总产出</v-btn>
       <v-card v-if="output" variant="outlined" class="mt-4">
         <v-card-title>产出</v-card-title>
-        <v-card-text style="white-space: pre-wrap">{{ output }}</v-card-text>
+        <v-card-text class="md-body" v-html="renderMd(output)" />
       </v-card>
     </div>
   </v-container>
@@ -79,6 +79,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { curate, inboundStream, listContacts, synthesize } from '../api/chorus'
+import { renderMd } from '../utils/markdown'
 
 const request = ref('便利店要不要在春节期间继续营业')
 const contactItems = ref([]) // {title, value:id}
@@ -187,3 +188,39 @@ async function runSynthesize() {
   }
 }
 </script>
+
+<style scoped>
+/* v-html 注入的内容需 :deep() 才能被 scoped 样式命中 */
+.md-body :deep(h1),
+.md-body :deep(h2),
+.md-body :deep(h3) {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0.6em 0 0.3em;
+}
+.md-body :deep(p) {
+  margin: 0.4em 0;
+}
+.md-body :deep(ul),
+.md-body :deep(ol) {
+  padding-left: 1.4em;
+  margin: 0.4em 0;
+}
+.md-body :deep(code) {
+  background: rgba(127, 127, 127, 0.15);
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+}
+.md-body :deep(pre) {
+  background: rgba(127, 127, 127, 0.12);
+  padding: 0.6em;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.md-body :deep(blockquote) {
+  border-left: 3px solid rgba(127, 127, 127, 0.4);
+  padding-left: 0.8em;
+  margin: 0.4em 0;
+  opacity: 0.85;
+}
+</style>
