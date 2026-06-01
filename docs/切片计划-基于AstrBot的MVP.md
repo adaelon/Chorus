@@ -99,6 +99,11 @@
 
 ## S3 圆桌配方 + 群视图（抽象验收点）
 
+**S3.0 配方引擎 interrupt 化（人在环统一，模型 A，§6.10）**
+- 做：扇出配方迁成**一张图** `clarify→frame→fanout→[interrupt: curate 循环]→synthesize`：`curate` 用 LangGraph `interrupt`（暂停—等人—`resume`，多轮循环）进图，`synthesize` 成图终端节点；service 层只剩"起/恢复图 + 转发 interrupt payload"。建立 S3.4 圆桌打断复用的同一 interrupt 机制。
+- 不做：圆桌配方（S3.1+）；前端契约破坏（`/inbound`→候选、`/curate`→resume 尽量保持端点形状）。
+- 判据：`pytest` — 原 e2e 行为不变仍绿（A3 重构）；新增 interrupt/resume 往返 + 多轮 curate 测试；`git diff` 显示业务步骤从 service 移入图、引擎无 if/else 特例。
+
 **S3.1 TURN 节点**
 - 做：`TURN` 单 agent 发言（能看到上文 `history`），产出追加 state，`turns_since_human += 1`。
 - 不做：调度决策（S3.2）、并行。
@@ -171,6 +176,7 @@
 S1.1 → S1.2 → {S1.3, S1.4} → S1.5 → S1.6 ──┬─→ S1.7 → S1.8        (扇出端到端可用)
                                             │
 S1.6 ─→ S2.0(durable checkpointer) ; S2.1 → S2.2 → S2.3   │   S2.4 需 S2.1 + 后端
+S1.6 ─→ S3.0(interrupt 化扇出, 模型A) ──→ S3.4 复用同一 interrupt 机制
 S2.* ─→ S3.1 → S3.2 → S3.3(验收) → S3.4 → S3.5 ; S3.6/S3.7 需前端基座(S1.7)
 S3(引擎) ─→ S4.1 → S4.2 → S4.3 → S4.4 ; S4.5 需 S1.7
 ```

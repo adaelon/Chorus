@@ -256,6 +256,14 @@ class Message(SQLModel):     # 群历史(=短期记忆)
 **命门**：当前后端 deepseek-v4-pro 既不支持 `response_format` 也不支持强制 `tool_choice`（实测 400），故默认必须 `text_json`；json_schema/function_calling 分支**未对支持的真实模型 smoke 过**，接入时再验。
 **何时回头**：接入第二个模型（如 OpenAI）时，给其配 `json_schema` 并 smoke。
 
+### §6.10 原语分类与人在环（模型 A）
+**决策**：原语分两类——**自包含**（`state→delta`，无需图外输入：clarify/frame/fanout/turn/schedule/synthesize）与**人在环**（需图外人的输入：curate）。**两类都进图**：人在环用 LangGraph `interrupt`（暂停—等人—`resume`，多轮用循环）表达。扇出配方 = 一张图 `clarify→frame→fanout→[interrupt: curate 循环]→synthesize`；service 层只剩"起/恢复图 + 转发 interrupt payload"，不再持有业务步骤。圆桌的人在环打断（S3.4）复用同一 interrupt 机制。
+**否决**：
+- 模型 B（人在环留 service 层操作）：synthesize 等自包含原语没进图，抽象不纯；且扇出(service-op)与圆桌(interrupt)是两套人在环路径，不统一。
+**命门**：interrupt + 多轮 curation 的循环要处理对；HTTP 契约（`/inbound` 跑到 interrupt 返回候选、`/curate` 用 `resume`）要对前端兼容。
+**何时回头**：若 interrupt 复杂度反噬，重评。
+**迁移**：S1.6 的扇出现以模型 B 实现（curate/synthesize 为 service 操作）；切片 **S3.0** 迁到 interrupt 化，行为不变、测试保持绿（A3 重构）。
+
 ---
 
 ## 7. MVP 落地顺序（每步独立可验）
@@ -344,7 +352,11 @@ INTERRUPT   人随时插话注入 (横切, 永远可用)
 评审/红队… = 另一种接线（将来加，不改引擎）
 ```
 
-加一个工作模式 = **写一张配方图**，不是改代码加 if/else。两张配方的性质差异：
+加一个工作模式 = **写一张配方图**，不是改代码加 if/else。
+
+> **原语两类（§6.10，模型 A）**：自包含原语（CLARIFY/FRAME/FANOUT/TURN/SCHEDULE/SYNTHESIZE）是 `state→delta` 的图节点；人在环原语（CURATE）需图外人的输入，用 `interrupt`（暂停—等人—resume，多轮循环）进图。所以配方里的 CURATE 实为一个 interrupt 节点，整张图仍是纯组合，无 service 层特例。
+
+两张配方的性质差异：
 
 | | **圆桌配方** | **扇出配方** |
 |---|---|---|
