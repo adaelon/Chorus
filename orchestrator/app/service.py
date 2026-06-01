@@ -1,14 +1,15 @@
-"""扇出配方的 HTTP 服务。
+"""扇出配方的 HTTP 服务 + Contact 注册表 CRUD。
 
 端点：
   GET  /health
   POST /inbound    {group_key, request, roster:[contact_id]} → 跑生成段 → {candidates}
   POST /curate     {group_key, commands:[...]}               → apply 策展 → {candidates, picked}
   POST /synthesize {group_key}                               → 汇成产出 → {output}
+  GET/POST/PUT/DELETE /contacts                              → Contact 注册表 CRUD（S2.4）
 
-S2.0：默认用 **AsyncSqliteSaver**（跨重启持久），经 FastAPI lifespan 管理异步
-连接、启动时建图挂 `app.state.graph`。测试可注入 `MemorySaver`（快、无文件）。
-节点 LLM 依赖（assign/generate）可注入，便于离线 e2e。
+S2.0：checkpointer 默认 AsyncSqliteSaver；S2.4：lifespan 起注册表 DB，
+把 persona_provider / reputation_adjuster 接进 live（真实人设进 prompt、信誉落库）。
+测试可注入 MemorySaver / 假 generate / 临时 registry_db_path，保持离线。
 """
 
 from __future__ import annotations
@@ -20,7 +21,11 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from pydantic import BaseModel, Field
+from sqlmodel import select
 
+from .db.engine import init_models, make_engine, make_session_factory
+from .db.models import Contact
+from .db.repo import persona_provider_from, reputation_adjuster_from
 from .nodes.curate import CurateCommand, Eliminate, Pick, Reassign, ReputationAdjuster, curate
 from .nodes.frame import AssignFn
 from .nodes.generate import GenerateFn, PersonaProvider
@@ -34,7 +39,7 @@ AnyCommand = Annotated[Union[Pick, Eliminate, Reassign], Field(discriminator="ki
 class InboundReq(BaseModel):
     group_key: str
     request: str
-    roster: list[str]  # contact_ids（Contact 注册表见 S2.1）
+    roster: list[str]  # contact_ids（来自 Contact 注册表）
 
 
 class CurateReq(BaseModel):
@@ -44,6 +49,14 @@ class CurateReq(BaseModel):
 
 class GroupReq(BaseModel):
     group_key: str
+
+
+class ContactIn(BaseModel):
+    id: str
+    name: str
+    title: str = ""
+    persona_style: str = ""
+    base_stance: str = ""
 
 
 def _cfg(group_key: str) -> dict:
@@ -68,22 +81,33 @@ def create_app(
     persona_provider: PersonaProvider | None = None,
     reputation_adjuster: ReputationAdjuster | None = None,
     db_path: str = "group_checkpoints.sqlite",
+    registry_db_path: str = "chorus_registry.sqlite",
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        if checkpointer is not None:
-            # 注入式（测试用 MemorySaver，或显式给定 saver）
-            app.state.graph = build_fanout_recipe(
-                checkpointer, assign=assign, generate=generate, persona_provider=persona_provider
-            )
-            yield
-        else:
-            # 默认：durable，跨重启持久
-            async with AsyncSqliteSaver.from_conn_string(db_path) as saver:
+        # 注册表 DB（Contact 等）；persona/信誉默认由它支持，可被显式注入覆盖。
+        registry_engine = make_engine(registry_db_path)
+        await init_models(registry_engine)
+        sf = make_session_factory(registry_engine)
+        app.state.session_factory = sf
+        pp = persona_provider or persona_provider_from(sf)
+        ra = reputation_adjuster or reputation_adjuster_from(sf)
+        app.state.persona_provider = pp
+        app.state.reputation_adjuster = ra
+        try:
+            if checkpointer is not None:
                 app.state.graph = build_fanout_recipe(
-                    saver, assign=assign, generate=generate, persona_provider=persona_provider
+                    checkpointer, assign=assign, generate=generate, persona_provider=pp
                 )
                 yield
+            else:
+                async with AsyncSqliteSaver.from_conn_string(db_path) as saver:
+                    app.state.graph = build_fanout_recipe(
+                        saver, assign=assign, generate=generate, persona_provider=pp
+                    )
+                    yield
+        finally:
+            await registry_engine.dispose()
 
     app = FastAPI(title="Chorus orchestrator (fanout)", lifespan=lifespan)
     # 开发期允许前端(vite :5173)跨域访问 brainApi；生产应收紧 allow_origins。
@@ -120,8 +144,8 @@ def create_app(
             state,
             commands,
             generate=generate,
-            persona_provider=persona_provider,
-            reputation_adjuster=reputation_adjuster,
+            persona_provider=request.app.state.persona_provider,
+            reputation_adjuster=request.app.state.reputation_adjuster,
         )
         await graph.aupdate_state(_cfg(req.group_key), result)
         return result
@@ -133,5 +157,44 @@ def create_app(
         result = await synthesize(state)
         await graph.aupdate_state(_cfg(req.group_key), result)
         return result
+
+    # ---- Contact 注册表 CRUD（S2.4）----
+
+    @app.get("/contacts")
+    async def list_contacts(request: Request):
+        async with request.app.state.session_factory() as s:
+            return (await s.exec(select(Contact))).all()
+
+    @app.post("/contacts")
+    async def create_contact(c: ContactIn, request: Request):
+        async with request.app.state.session_factory() as s:
+            if await s.get(Contact, c.id) is not None:
+                raise HTTPException(status_code=409, detail=f"contact {c.id} exists")
+            obj = Contact(**c.model_dump())
+            s.add(obj)
+            await s.commit()
+            return obj
+
+    @app.put("/contacts/{cid}")
+    async def update_contact(cid: str, c: ContactIn, request: Request):
+        async with request.app.state.session_factory() as s:
+            obj = await s.get(Contact, cid)
+            if obj is None:
+                raise HTTPException(status_code=404, detail=f"contact {cid} not found")
+            for k, v in c.model_dump(exclude={"id"}).items():
+                setattr(obj, k, v)
+            s.add(obj)
+            await s.commit()
+            return obj
+
+    @app.delete("/contacts/{cid}")
+    async def delete_contact(cid: str, request: Request):
+        async with request.app.state.session_factory() as s:
+            obj = await s.get(Contact, cid)
+            if obj is None:
+                raise HTTPException(status_code=404, detail=f"contact {cid} not found")
+            await s.delete(obj)
+            await s.commit()
+            return {"deleted": cid}
 
     return app

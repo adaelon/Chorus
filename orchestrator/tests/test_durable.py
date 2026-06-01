@@ -19,13 +19,14 @@ async def _fake_gen(slot: AgentSlot, request: str, history) -> Candidate:
 def test_group_state_survives_restart(tmp_path):
     db = str(tmp_path / "chk.sqlite")
 
+    reg = str(tmp_path / "reg.sqlite")
     # 第一次"进程"：inbound 写入候选（durable AsyncSqliteSaver，落 db 文件）
-    with TestClient(create_app(db_path=db, assign=_fake_assign, generate=_fake_gen)) as c1:
+    with TestClient(create_app(db_path=db, registry_db_path=reg, assign=_fake_assign, generate=_fake_gen)) as c1:
         r = c1.post("/inbound", json={"group_key": "g", "request": "选题", "roster": ["A", "B"]})
         assert r.status_code == 200 and len(r.json()["candidates"]) == 2
 
     # 第二次"进程"：同一 db 文件重建 app，群候选仍在（synthesize 读 candidates）
-    with TestClient(create_app(db_path=db, assign=_fake_assign, generate=_fake_gen)) as c2:
+    with TestClient(create_app(db_path=db, registry_db_path=reg, assign=_fake_assign, generate=_fake_gen)) as c2:
         r = c2.post("/synthesize", json={"group_key": "g"})
         assert r.status_code == 200
         out = r.json()["output"]

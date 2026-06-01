@@ -1,7 +1,7 @@
 """S1.6 判据：端到端 /inbound → N 候选 → /curate → 策展结果 → /synthesize，序列正确。
 
-注入假 assign/generate + MemorySaver，离线确定性验证（不碰真实 LLM、不落文件）。
-lifespan 需用 `with TestClient(app)` 触发（S2.0 起服务用 lifespan 建图）。
+注入假 assign/generate + MemorySaver + 临时 registry，离线确定性（不碰真实 LLM、不在 cwd 落文件）。
+lifespan 需用 `with TestClient(app)` 触发。
 """
 
 from __future__ import annotations
@@ -21,18 +21,23 @@ async def _fake_gen(slot: AgentSlot, request: str, history) -> Candidate:
     return Candidate(contact_id=slot.contact_id, dimension=slot.dimension, text=f"[{slot.contact_id}] {request}")
 
 
-def _app():
-    return create_app(checkpointer=MemorySaver(), assign=_fake_assign, generate=_fake_gen)
+def _app(tmp_path):
+    return create_app(
+        checkpointer=MemorySaver(),
+        assign=_fake_assign,
+        generate=_fake_gen,
+        registry_db_path=str(tmp_path / "reg.sqlite"),
+    )
 
 
-def test_health():
-    with TestClient(_app()) as client:
+def test_health(tmp_path):
+    with TestClient(_app(tmp_path)) as client:
         r = client.get("/health")
         assert r.status_code == 200 and r.json()["status"] == "ok"
 
 
-def test_fanout_e2e_inbound_curate_synthesize():
-    with TestClient(_app()) as client:
+def test_fanout_e2e_inbound_curate_synthesize(tmp_path):
+    with TestClient(_app(tmp_path)) as client:
         # /inbound → 3 份候选
         r = client.post("/inbound", json={"group_key": "g1", "request": "便利店选题", "roster": ["A", "B", "C"]})
         assert r.status_code == 200
@@ -66,7 +71,7 @@ def test_fanout_e2e_inbound_curate_synthesize():
         assert "B 的要点" in r3.json()["output"]
 
 
-def test_curate_before_inbound_returns_404():
-    with TestClient(_app()) as client:
+def test_curate_before_inbound_returns_404(tmp_path):
+    with TestClient(_app(tmp_path)) as client:
         r = client.post("/synthesize", json={"group_key": "never"})
         assert r.status_code == 404
