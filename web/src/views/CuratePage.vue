@@ -4,8 +4,22 @@
 
     <!-- 需求 + 占位 roster -->
     <v-textarea v-model="request" label="需求" rows="2" auto-grow variant="outlined" />
-    <v-text-field v-model="rosterInput" label="到场好友（逗号分隔，占位 roster）" variant="outlined" />
-    <v-btn color="primary" :loading="loading" :disabled="!request || !rosterInput" @click="runInbound">
+    <v-select
+      v-model="selectedContacts"
+      :items="contactItems"
+      label="到场好友（从注册表选）"
+      multiple
+      chips
+      variant="outlined"
+      :hint="contactItems.length ? '' : '注册表为空——先去“好友”页新建'"
+      persistent-hint
+    />
+    <v-btn
+      color="primary"
+      :loading="loading"
+      :disabled="!request || !selectedContacts.length"
+      @click="runInbound"
+    >
       并行生成候选
     </v-btn>
     <span class="text-caption ml-3">（真实 LLM，思考模型较慢，约 1 分钟）</span>
@@ -62,11 +76,12 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
-import { curate, inbound, synthesize } from '../api/chorus'
+import { computed, onMounted, ref } from 'vue'
+import { curate, inbound, listContacts, synthesize } from '../api/chorus'
 
 const request = ref('便利店要不要在春节期间继续营业')
-const rosterInput = ref('老陈,小杨,阿May')
+const contactItems = ref([]) // {title, value:id}
+const selectedContacts = ref([])
 const groupKey = ref('')
 const candidates = ref([])
 const picked = ref([])
@@ -79,12 +94,16 @@ const reassignExecutor = ref('')
 
 const contactIds = computed(() => candidates.value.map((c) => c.contact_id))
 
-function roster() {
-  return rosterInput.value
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
+async function loadContacts() {
+  try {
+    const cs = await listContacts()
+    contactItems.value = cs.map((c) => ({ title: `${c.name}（${c.id}）`, value: c.id }))
+  } catch (e) {
+    error.value = String(e?.message || e)
+  }
 }
+
+onMounted(loadContacts)
 
 async function runInbound() {
   loading.value = true
@@ -93,7 +112,7 @@ async function runInbound() {
   output.value = ''
   try {
     groupKey.value = crypto.randomUUID()
-    const data = await inbound(groupKey.value, request.value, roster())
+    const data = await inbound(groupKey.value, request.value, selectedContacts.value)
     candidates.value = data.candidates
   } catch (e) {
     error.value = String(e?.message || e)

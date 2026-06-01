@@ -9,3 +9,9 @@ export const curate = (group_key, commands) =>
 
 export const synthesize = (group_key) =>
   brainApi.post('/synthesize', { group_key }).then((r) => r.data)
+
+// Contact 注册表 CRUD（S2.4）
+export const listContacts = () => brainApi.get('/contacts').then((r) => r.data)
+export const createContact = (c) => brainApi.post('/contacts', c).then((r) => r.data)
+export const updateContact = (id, c) => brainApi.put(`/contacts/${id}`, c).then((r) => r.data)
+export const deleteContact = (id) => brainApi.delete(`/contacts/${id}`).then((r) => r.data)
