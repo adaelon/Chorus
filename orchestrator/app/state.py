@@ -41,6 +41,7 @@ class GroupState(BaseModel):
     roster: list[AgentSlot] = Field(default_factory=list)
     history: list[Msg] = Field(default_factory=list)
     candidates: list[Candidate] = Field(default_factory=list)
+    picked: list[Candidate] = Field(default_factory=list)  # 人工策展选中的点/候选
     turns_since_human: int = 0
     max_turns_per_human: int = 6
     pending_human: Msg | None = None
