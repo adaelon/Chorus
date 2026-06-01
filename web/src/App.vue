@@ -1,6 +1,9 @@
 <template>
   <v-app>
-    <v-app-bar flat title="Chorus" />
+    <v-app-bar flat title="Chorus">
+      <v-btn to="/" variant="text">Home</v-btn>
+      <v-btn to="/curate" variant="text">策展</v-btn>
+    </v-app-bar>
     <v-main>
       <router-view />
     </v-main>
