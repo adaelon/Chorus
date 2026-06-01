@@ -1,8 +1,7 @@
-"""S1.2: 配置加载。
+"""配置加载。
 
-开发期复用 talk-agent 的 .env（用户指定）。优先读 os.environ；缺失时从
-sibling `talk-agent/.env` 补。生产环境应直接注入真实环境变量，不依赖该文件。
-可用 CHORUS_DOTENV 覆盖 .env 路径。
+优先读 os.environ；缺失时从 **Chorus 自己的 `orchestrator/.env`** 补（不入库，
+见 .env.example）。生产环境应直接注入真实环境变量。可用 CHORUS_DOTENV 覆盖路径。
 """
 
 from __future__ import annotations
@@ -13,8 +12,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Chorus/orchestrator/app -> .../agent/talk-agent/.env
-_DEFAULT_DOTENV = Path(__file__).resolve().parents[3] / "talk-agent" / ".env"
+# Chorus/orchestrator/app/config.py -> orchestrator/.env
+_DEFAULT_DOTENV = Path(__file__).resolve().parents[1] / ".env"
 
 
 def _load_env() -> None:
