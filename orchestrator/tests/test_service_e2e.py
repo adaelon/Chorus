@@ -59,6 +59,11 @@ def test_fanout_e2e_inbound_curate_synthesize():
     assert "B 的要点" in r3.json()["output"]
 
 
+def test_health():
+    r = _client().get("/health")
+    assert r.status_code == 200 and r.json()["status"] == "ok"
+
+
 def test_curate_before_inbound_returns_404():
     # 未 /inbound 的群没有 state → 404，而非静默成功
     client = _client()

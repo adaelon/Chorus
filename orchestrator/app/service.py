@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Annotated, Union
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from langgraph.checkpoint.memory import MemorySaver
 from pydantic import BaseModel, Field
 
@@ -51,6 +52,17 @@ def create_app(
     cp = checkpointer or MemorySaver()
     graph = build_fanout_recipe(cp, assign=assign, generate=generate)
     app = FastAPI(title="Chorus orchestrator (fanout)")
+    # 开发期允许前端(vite :5173)跨域访问 brainApi；生产应收紧 allow_origins。
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok"}
 
     def cfg(group_key: str) -> dict:
         return {"configurable": {"thread_id": group_key}}

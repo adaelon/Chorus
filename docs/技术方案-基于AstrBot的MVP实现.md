@@ -240,13 +240,13 @@ class Message(SQLModel):     # 群历史(=短期记忆)
 **命门**：`computer_client` 耦合 `star.context.Context`，"插件内暴露 `/exec`"未实测，真做前先验。
 **何时回头**：进入需求 §9 执行层 Phase 2 时。
 
-### §6.8 前端：继承并改造 AstrBot Dashboard
-**决策**：fork AstrBot dashboard SPA；共享外壳全继承；管理域复用(`PersonaPage`→Contact、`PlatformPage`→bot 管理)连 AstrBot 后端；产品域(群视图/策展页/配方选择)新建、连大脑；产品域优先，**纳入 MVP**（详见 §12）。
+### §6.8 前端：精简骨架 + 按需移植 AstrBot 外壳件（2026-06-01 修订）
+**决策**：**不整包 fork** dashboard；建精简 Vue3+Vuetify 产品骨架（`web/`），**按需**移植 AstrBot 的核心外壳件（流式 markdown 气泡 / JWT 鉴权 / 主题）到真正用到的切片。产品域(群视图/策展页/配方选择)新建连大脑；管理域用到时再移植对应页。
 **否决**：
-- 从零写前端：丢掉现成鉴权/主题/流式渲染外壳。
-- 全套照搬：拖着商业模板 + 无关管理页的死代码。
-**命门**：双后端(adminApi/brainApi)鉴权打通；fork 后剥离死代码。
-**何时回头**：管理域要深度定制时再脱离 AstrBot dashboard。
+- 整包 fork（原决策）：实测 AstrBot dashboard 的 `main.ts` 拖进 monaco/charts/tiptap 等 Chorus 不需要的死重量，且半剥离的重模板难 build。
+- 从零全写、连外壳也不借：浪费 AstrBot 现成的流式气泡/鉴权。
+**命门**：只移植真正用到的件；双后端(adminApi/brainApi)按需接。
+**何时回头**：若移植件越积越多近似整个 dashboard，再考虑直接 fork。
 
 ### §6.9 结构化输出策略
 **决策**：抽 `structured_invoke(model, msgs, schema, *, method)` 三策略（json_schema / function_calling / text_json）；method 由**每模型配置**决定，`text_json` 为通用兜底。调用点（frame/schedule）模型无关，接新模型=改配置。

@@ -55,10 +55,10 @@
 
 ### 前端（继承改造，技术方案 §12）
 
-**S1.7 前端基座**
-- 做：fork dashboard SPA；剥离用不上的管理页（知识库/cron/插件市场…）；配 `brainApi` axios client；外壳(layout/鉴权/主题)跑起来。
-- 不做：CuratePage 具体逻辑、管理域改造。
-- 判据：`pnpm dev` 起得来；路由到空白产品页；`brainApi` ping 通 S1.6 服务（浏览器手动确认 + network 面板看到 200）。
+**S1.7 前端基座**（精简骨架，§6.8 修订版）
+- 做：建精简 Vue3+Vuetify SPA `web/`（空白产品页 + 路由 + 主题）；配 `brainApi` axios（默认 :8900，`VITE_BRAIN_BASE_URL` 可覆盖）；后端加 `GET /health` + CORS 供连通验证。**不整包 fork**、不拖 monaco/charts。
+- 不做：CuratePage 逻辑（S1.8）、管理域、外壳件移植（用到时再移）。
+- 判据：后端 `pytest` /health 绿（可自动验）；前端 `npm install && npm run dev` 起得来、浏览器 Ping brainApi 见 200（**本机浏览器手动验**）。
 
 **S1.8 CuratePage 最小版**
 - 做：N 候选并排展示 + `pick`/`eliminate`/`reassign` 操作，连 `brainApi`(S1.6)。
