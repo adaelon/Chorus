@@ -22,7 +22,8 @@
     >
       并行生成候选
     </v-btn>
-    <span class="text-caption ml-3">（真实 LLM，思考模型较慢，约 1 分钟）</span>
+    <span v-if="status" class="text-caption ml-3">{{ status }}</span>
+    <span v-else class="text-caption ml-3">（流式，token 边生成边出）</span>
 
     <v-alert v-if="error" type="error" class="mt-4" :text="error" />
 
@@ -77,7 +78,7 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { curate, inbound, listContacts, synthesize } from '../api/chorus'
+import { curate, inboundStream, listContacts, synthesize } from '../api/chorus'
 
 const request = ref('便利店要不要在春节期间继续营业')
 const contactItems = ref([]) // {title, value:id}
@@ -88,6 +89,7 @@ const picked = ref([])
 const output = ref('')
 const loading = ref(false)
 const error = ref('')
+const status = ref('')
 
 const reassignPoint = ref('')
 const reassignExecutor = ref('')
@@ -110,14 +112,40 @@ async function runInbound() {
   error.value = ''
   picked.value = []
   output.value = ''
+  candidates.value = []
+  status.value = ''
+  const byId = {}
+  groupKey.value = crypto.randomUUID()
   try {
-    groupKey.value = crypto.randomUUID()
-    const data = await inbound(groupKey.value, request.value, selectedContacts.value)
-    candidates.value = data.candidates
+    await inboundStream(groupKey.value, request.value, selectedContacts.value, {
+      status: (e) => {
+        status.value = e.stage === 'framing' ? '主持人分配维度中…' : e.stage
+      },
+      framed: (e) => {
+        status.value = ''
+        candidates.value = e.roster.map((r) => ({
+          contact_id: r.contact_id,
+          dimension: r.dimension,
+          text: '',
+        }))
+        for (const c of candidates.value) byId[c.contact_id] = c
+      },
+      delta: (e) => {
+        const c = byId[e.contact_id]
+        if (c) c.text += e.text // 逐 token 追加到对应卡片
+      },
+      candidates: (e) => {
+        candidates.value = e.candidates // 最终权威版
+      },
+      error: (e) => {
+        error.value = e.detail
+      },
+    })
   } catch (e) {
     error.value = String(e?.message || e)
   } finally {
     loading.value = false
+    status.value = ''
   }
 }
 
