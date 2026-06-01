@@ -4,5 +4,6 @@ import axios from 'axios'
 // 用 VITE_BRAIN_BASE_URL 覆盖。adminApi(AstrBot) 等用到时再加。
 export const brainApi = axios.create({
   baseURL: import.meta.env.VITE_BRAIN_BASE_URL || 'http://127.0.0.1:8900',
-  timeout: 120000,
+  // /inbound = frame + 3 路并行生成 + 首call冷启动，留足余量
+  timeout: 180000,
 })
