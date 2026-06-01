@@ -67,7 +67,12 @@ def default_generator(
             if persona is not None
             else placeholder_messages(slot, request)
         )
-        resp = await robust_ainvoke(model, msgs)
+        # 打 contact_id tag/metadata，供 LangGraph messages 流把 token 路由到对应候选卡。
+        config = {
+            "tags": [f"agent:{slot.contact_id}"],
+            "metadata": {"contact_id": slot.contact_id},
+        }
+        resp = await robust_ainvoke(model, msgs, config=config)
         return Candidate(
             contact_id=slot.contact_id,
             dimension=slot.dimension,

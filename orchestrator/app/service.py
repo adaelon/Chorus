@@ -14,11 +14,14 @@ S2.0：checkpointer 默认 AsyncSqliteSaver；S2.4：lifespan 起注册表 DB，
 
 from __future__ import annotations
 
+import asyncio
+import json
 from contextlib import asynccontextmanager
 from typing import Annotated, Union
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from pydantic import BaseModel, Field
 from sqlmodel import select
@@ -61,6 +64,43 @@ class ContactIn(BaseModel):
 
 def _cfg(group_key: str) -> dict:
     return {"configurable": {"thread_id": group_key}}
+
+
+def _sse(obj: dict) -> str:
+    return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
+
+
+def _to_event(mode: str, payload) -> dict | None:
+    """把 LangGraph astream 的 (mode,payload) 转成 SSE 事件；不关心的返回 None。"""
+    if mode == "messages":
+        chunk, meta = payload
+        content = getattr(chunk, "content", "")
+        if not content:  # 跳过空 content（reasoning 阶段）
+            return None
+        tags = meta.get("tags") or []
+        cid = next((t.split(":", 1)[1] for t in tags if t.startswith("agent:")), None)
+        if meta.get("langgraph_node") == "fanout" and cid:
+            text = content if isinstance(content, str) else str(content)
+            return {"type": "delta", "contact_id": cid, "text": text}
+        return None
+    if mode == "updates":
+        for node, delta in (payload or {}).items():
+            if not delta:
+                continue
+            if node == "frame" and "roster" in delta:
+                return {
+                    "type": "framed",
+                    "roster": [
+                        {"contact_id": s.contact_id, "dimension": s.dimension}
+                        for s in delta["roster"]
+                    ],
+                }
+            if node == "fanout" and "candidates" in delta:
+                return {
+                    "type": "candidates",
+                    "candidates": [c.model_dump() for c in delta["candidates"]],
+                }
+    return None
 
 
 async def _load_state(graph, group_key: str) -> GroupState:
@@ -149,6 +189,56 @@ def create_app(
         )
         await graph.aupdate_state(_cfg(req.group_key), result)
         return result
+
+    @app.post("/inbound/stream")
+    async def inbound_stream(req: InboundReq, request: Request):
+        """SSE 流式版 /inbound：边生成边推 token（按 agent 路由），心跳保活。
+
+        事件：framed(维度) / delta(某 agent 的 token) / candidates(最终) / done / error。
+        """
+        graph = request.app.state.graph
+        state_in = {
+            "group_key": req.group_key,
+            "roster": [AgentSlot(contact_id=c) for c in req.roster],
+            "pending_human": Msg(sender_id="human", sender_kind="human", text=req.request),
+        }
+        cfg = _cfg(req.group_key)
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def produce():
+            try:
+                await queue.put({"type": "status", "stage": "framing"})
+                async for mode, payload in graph.astream(
+                    state_in, cfg, stream_mode=["updates", "messages"]
+                ):
+                    ev = _to_event(mode, payload)
+                    if ev:
+                        await queue.put(ev)
+            except Exception as e:  # noqa: BLE001
+                await queue.put({"type": "error", "detail": str(e)})
+            finally:
+                await queue.put({"type": "done"})
+
+        async def gen():
+            task = asyncio.create_task(produce())
+            try:
+                while True:
+                    try:
+                        ev = await asyncio.wait_for(queue.get(), timeout=15)
+                    except asyncio.TimeoutError:
+                        yield ": heartbeat\n\n"  # 保活：frame 思考/长沉默时防断连
+                        continue
+                    yield _sse(ev)
+                    if ev.get("type") == "done":
+                        break
+            finally:
+                task.cancel()
+
+        return StreamingResponse(
+            gen(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     @app.post("/synthesize")
     async def synthesize_ep(req: GroupReq, request: Request):

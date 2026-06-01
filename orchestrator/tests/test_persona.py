@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessageChunk
 
 from app.db.models import Contact
 from app.nodes.generate import default_generator, persona_messages
@@ -37,9 +37,9 @@ class _FakeModel:
     def __init__(self):
         self.seen = None
 
-    async def ainvoke(self, messages):
+    async def astream(self, messages, config=None):
         self.seen = messages
-        return AIMessage(content="ok")
+        yield AIMessageChunk(content="ok")
 
 
 async def test_default_generator_uses_persona():

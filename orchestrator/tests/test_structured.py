@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessageChunk, HumanMessage
 from pydantic import BaseModel
 
 from app.structured import structured_invoke
@@ -20,9 +20,9 @@ class _FakeModel:
         self.content = content
         self.seen = None
 
-    async def ainvoke(self, messages):  # noqa: ANN001 - 测试桩
+    async def astream(self, messages, config=None):  # noqa: ANN001 - 测试桩
         self.seen = messages
-        return AIMessage(content=self.content)
+        yield AIMessageChunk(content=self.content)
 
 
 async def test_text_json_parses_clean_output():
