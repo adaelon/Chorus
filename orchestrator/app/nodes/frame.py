@@ -6,16 +6,15 @@
 
 from __future__ import annotations
 
-import json
-import re
 from collections.abc import Awaitable, Callable
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
-from ..llm import make_chat_model, robust_ainvoke
+from ..llm import make_chat_model
 from ..state import AgentSlot, GroupState
+from ..structured import structured_invoke
 from ._common import request_text
 
 DimensionMap = dict[str, str]  # contact_id -> dimension
@@ -31,30 +30,20 @@ class _Dimensions(BaseModel):
     assignments: list[_DimAssignment]
 
 
-def _extract_json_obj(text: str) -> dict:
-    """从 LLM 文本里抽出最外层 JSON 对象（容忍 ```json 围栏 / 思考前言）。"""
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if not match:
-        raise ValueError(f"主持人未返回可解析的 JSON: {text!r}")
-    return json.loads(match.group(0))
-
-
 def _default_assigner(model: ChatOpenAI) -> AssignFn:
-    # 后端(deepseek-v4-pro 思考模型)既不支持 response_format，也不支持强制 tool_choice，
-    # 故不用 with_structured_output，改走纯文本 JSON + 自解析 + pydantic 校验。
+    # 结构化输出走 structured_invoke（策略由配置决定，当前后端=text_json，见 §6.9）。
     async def assign(request: str, roster: list[AgentSlot]) -> DimensionMap:
         ids = [s.contact_id for s in roster]
         system = (
             "你是圆桌主持人。给每个到场成员分配一个互不重叠、贴合需求的讨论维度"
             "（简短名词短语），每个成员恰好一个。"
-            '只输出 JSON：{"assignments":[{"contact_id":"...","dimension":"..."}]}，'
-            "不要任何额外文字。"
         )
         user = f"需求：{request}\n到场成员：{ids}"
-        resp = await robust_ainvoke(
-            model, [SystemMessage(content=system), HumanMessage(content=user)]
+        dims = await structured_invoke(
+            model,
+            [SystemMessage(content=system), HumanMessage(content=user)],
+            _Dimensions,
         )
-        dims = _Dimensions.model_validate(_extract_json_obj(str(resp.content)))
         return {a.contact_id: a.dimension for a in dims.assignments}
 
     return assign

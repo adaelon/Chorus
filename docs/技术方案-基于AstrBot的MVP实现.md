@@ -248,6 +248,14 @@ class Message(SQLModel):     # 群历史(=短期记忆)
 **命门**：双后端(adminApi/brainApi)鉴权打通；fork 后剥离死代码。
 **何时回头**：管理域要深度定制时再脱离 AstrBot dashboard。
 
+### §6.9 结构化输出策略
+**决策**：抽 `structured_invoke(model, msgs, schema, *, method)` 三策略（json_schema / function_calling / text_json）；method 由**每模型配置**决定，`text_json` 为通用兜底。调用点（frame/schedule）模型无关，接新模型=改配置。
+**否决**：
+- 把 text_json 写死进各节点：对支持原生结构化输出的模型过拟合到最低水位，且 SCHEDULE 会重抄解析。
+- 运行时探测能力：不确定、不可复现；改用显式 per-model 配置。
+**命门**：当前后端 deepseek-v4-pro 既不支持 `response_format` 也不支持强制 `tool_choice`（实测 400），故默认必须 `text_json`；json_schema/function_calling 分支**未对支持的真实模型 smoke 过**，接入时再验。
+**何时回头**：接入第二个模型（如 OpenAI）时，给其配 `json_schema` 并 smoke。
+
 ---
 
 ## 7. MVP 落地顺序（每步独立可验）

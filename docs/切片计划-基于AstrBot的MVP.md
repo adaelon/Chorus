@@ -37,6 +37,12 @@
 - 不做：CLARIFY 真实信心自评（留 S3.5）。
 - 判据：`pytest` — 给一个需求，roster 每个 slot 拿到非空 `dimension`。
 
+**S1.4b 结构化输出策略抽象**（§6.9）
+- 做：`app/structured.py:structured_invoke` 三策略（json_schema / function_calling / text_json）+ `LLM_STRUCTURED_METHOD` 配置（默认 text_json）；frame 改用它。
+- 不做：对 json_schema / function_calling 做真实模型 smoke（当前后端不支持，接入新模型再验）。
+- 判据：`pytest` — text_json 解析/容错单测（离线）+ frame 离线测试仍绿 + frame 真实 smoke 仍通过（经新抽象走 text_json）。
+- 起因：S1.4 实测后端不支持 response_format/强制 tool_choice，避免把 text_json 写死过拟合；**S3.2 SCHEDULE 复用本抽象**。
+
 **S1.5 CURATE 节点（人工策展指令）**
 - 做：`CURATE` 接收并 apply `pick`/`eliminate`/`reassign` 指令到 state；`reassign(point_from_A, exec=B)` 触发对 B 的一次定向再生成。
 - 不做：信誉写入（留 S2.3）、前端。
@@ -93,7 +99,7 @@
 - 判据：`pytest` — 连续两次 TURN，第二次 prompt 含第一次发言（上文可见性）。
 
 **S3.2 SCHEDULE 节点**
-- 做：`decide_next`(§3.2)——`pending_human` 优先 → 预算闸 → `moderator_llm_pick`，返回 `NextSpeaker|YieldToHuman|Stop`。
+- 做：`decide_next`(§3.2)——`pending_human` 优先 → 预算闸 → `moderator_llm_pick`，返回 `NextSpeaker|YieldToHuman|Stop`。`moderator_llm_pick` **复用 S1.4b 的 `structured_invoke`**（§6.9）。
 - 不做：打断注入（S3.4）。
 - 判据：`pytest` — 三个分支各构造一例输入，断言返回正确决策类型；到 `max_turns_per_human` 必返 Stop。
 

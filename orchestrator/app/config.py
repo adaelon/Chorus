@@ -29,6 +29,9 @@ class LLMSettings:
     api_key: str
     model: str
     temperature: float = 0.75
+    # 结构化输出策略：见 app/structured.py。默认 text_json（通用兜底）。
+    # 当前后端 deepseek-v4-pro 不支持 json_schema / 强制 tool_choice，故默认即正确。
+    structured_method: str = "text_json"
 
 
 def load_llm_settings() -> LLMSettings:
@@ -38,4 +41,5 @@ def load_llm_settings() -> LLMSettings:
         api_key=os.environ["LLM_API_KEY"],
         model=os.environ["LLM_MODEL"],
         temperature=float(os.environ.get("LLM_TEMPERATURE", "0.75")),
+        structured_method=os.environ.get("LLM_STRUCTURED_METHOD", "text_json"),
     )
