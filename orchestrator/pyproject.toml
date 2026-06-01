@@ -1,0 +1,17 @@
+[project]
+name = "ai-group-orchestrator"
+version = "0.0.1"
+description = "AI 群聊编排服务（LangGraph 大脑）—— 基于 AstrBot 适配层的 MVP。见 ../docs/技术方案-基于AstrBot的MVP实现.md"
+requires-python = ">=3.12"
+dependencies = [
+    "langgraph>=1.2,<2",
+    "langgraph-checkpoint-sqlite>=3.1,<4",
+    "pydantic>=2.10,<3",
+]
+
+[dependency-groups]
+dev = ["pytest>=9,<10"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
