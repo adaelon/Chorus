@@ -14,19 +14,10 @@ from langchain_openai import ChatOpenAI
 
 from ..llm import make_chat_model, robust_ainvoke
 from ..state import AgentSlot, Candidate, GroupState
+from ._common import request_text
 
 # 生成单份候选的异步函数签名；可注入以便测试不碰真实 LLM。
 GenerateFn = Callable[[AgentSlot, str], Awaitable[Candidate]]
-
-
-def _request_text(state: GroupState) -> str:
-    """取触发本轮扇出的人类需求：优先 pending_human，否则历史里最近一条人类消息。"""
-    if state.pending_human is not None:
-        return state.pending_human.text
-    for msg in reversed(state.history):
-        if msg.sender_kind == "human":
-            return msg.text
-    return ""
 
 
 def _placeholder_messages(slot: AgentSlot, request: str) -> list[BaseMessage]:
@@ -59,6 +50,6 @@ async def fanout(
     LangGraph 节点：返回的 dict 会被合并进 state（candidates channel）。
     """
     gen = generate or _default_generator(model or make_chat_model())
-    request = _request_text(state)
+    request = request_text(state)
     candidates = await asyncio.gather(*(gen(slot, request) for slot in state.roster))
     return {"candidates": list(candidates)}
