@@ -26,12 +26,21 @@ class Msg(BaseModel):
     ts: float = 0.0
 
 
+class Candidate(BaseModel):
+    """扇出模式下，一个 agent 对当前需求产出的一份候选（技术方案 §10）。"""
+
+    contact_id: str
+    dimension: str | None = None
+    text: str
+
+
 class GroupState(BaseModel):
     """LangGraph 图的共享状态。配方(recipe)在其上演化。"""
 
     group_key: str
     roster: list[AgentSlot] = Field(default_factory=list)
     history: list[Msg] = Field(default_factory=list)
+    candidates: list[Candidate] = Field(default_factory=list)
     turns_since_human: int = 0
     max_turns_per_human: int = 6
     pending_human: Msg | None = None

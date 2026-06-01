@@ -61,3 +61,24 @@ def robust_invoke(
         return model.invoke(messages)
 
     return _call()
+
+
+async def robust_ainvoke(
+    model: ChatOpenAI,
+    messages: Sequence[BaseMessage],
+    *,
+    attempts: int = 3,
+    wait_initial: float = 0.5,
+) -> BaseMessage:
+    """robust_invoke 的异步版（供 FANOUT 等并行节点用）。"""
+
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(attempts),
+        wait=wait_exponential(multiplier=wait_initial, max=8),
+        retry=retry_if_exception_type(RETRYABLE),
+    )
+    async def _call() -> BaseMessage:
+        return await model.ainvoke(messages)
+
+    return await _call()
