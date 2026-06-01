@@ -14,7 +14,7 @@ from app.state import AgentSlot, Candidate, GroupState, Msg
 DELAY = 0.2
 
 
-async def _slow_gen(slot: AgentSlot, request: str) -> Candidate:
+async def _slow_gen(slot: AgentSlot, request: str, history) -> Candidate:
     await asyncio.sleep(DELAY)
     return Candidate(
         contact_id=slot.contact_id,

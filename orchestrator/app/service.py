@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 
 from .nodes.curate import CurateCommand, Eliminate, Pick, Reassign, curate
 from .nodes.frame import AssignFn
-from .nodes.generate import GenerateFn
+from .nodes.generate import GenerateFn, PersonaProvider
 from .nodes.synthesize import synthesize
 from .recipes import build_fanout_recipe
 from .state import AgentSlot, GroupState, Msg
@@ -65,6 +65,7 @@ def create_app(
     checkpointer=None,
     assign: AssignFn | None = None,
     generate: GenerateFn | None = None,
+    persona_provider: PersonaProvider | None = None,
     db_path: str = "group_checkpoints.sqlite",
 ) -> FastAPI:
     @asynccontextmanager
@@ -72,14 +73,14 @@ def create_app(
         if checkpointer is not None:
             # 注入式（测试用 MemorySaver，或显式给定 saver）
             app.state.graph = build_fanout_recipe(
-                checkpointer, assign=assign, generate=generate
+                checkpointer, assign=assign, generate=generate, persona_provider=persona_provider
             )
             yield
         else:
             # 默认：durable，跨重启持久
             async with AsyncSqliteSaver.from_conn_string(db_path) as saver:
                 app.state.graph = build_fanout_recipe(
-                    saver, assign=assign, generate=generate
+                    saver, assign=assign, generate=generate, persona_provider=persona_provider
                 )
                 yield
 
@@ -114,7 +115,9 @@ def create_app(
         graph = request.app.state.graph
         state = await _load_state(graph, req.group_key)
         commands: list[CurateCommand] = list(req.commands)
-        result = await curate(state, commands, generate=generate)
+        result = await curate(
+            state, commands, generate=generate, persona_provider=persona_provider
+        )
         await graph.aupdate_state(_cfg(req.group_key), result)
         return result
 

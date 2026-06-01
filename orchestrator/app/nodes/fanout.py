@@ -13,7 +13,7 @@ from langchain_openai import ChatOpenAI
 from ..llm import make_chat_model
 from ..state import GroupState
 from ._common import request_text
-from .generate import GenerateFn, default_generator
+from .generate import GenerateFn, PersonaProvider, default_generator
 
 
 async def fanout(
@@ -21,12 +21,15 @@ async def fanout(
     *,
     model: ChatOpenAI | None = None,
     generate: GenerateFn | None = None,
+    persona_provider: PersonaProvider | None = None,
 ) -> dict:
     """并行生成 N 份候选，写回 state.candidates。
 
     LangGraph 节点：返回的 dict 会被合并进 state（candidates channel）。
     """
-    gen = generate or default_generator(model or make_chat_model())
+    gen = generate or default_generator(model or make_chat_model(), persona_provider)
     request = request_text(state)
-    candidates = await asyncio.gather(*(gen(slot, request) for slot in state.roster))
+    candidates = await asyncio.gather(
+        *(gen(slot, request, state.history) for slot in state.roster)
+    )
     return {"candidates": list(candidates)}

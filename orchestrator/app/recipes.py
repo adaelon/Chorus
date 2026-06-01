@@ -14,9 +14,8 @@ from langgraph.graph import END, START, StateGraph
 
 from .nodes.clarify import clarify
 from .nodes.fanout import fanout
-from .nodes.frame import frame
-from .nodes.generate import GenerateFn
-from .nodes.frame import AssignFn
+from .nodes.frame import AssignFn, frame
+from .nodes.generate import GenerateFn, PersonaProvider
 from .state import GroupState
 
 
@@ -25,12 +24,13 @@ def build_fanout_recipe(
     *,
     assign: AssignFn | None = None,
     generate: GenerateFn | None = None,
+    persona_provider: PersonaProvider | None = None,
 ):
     """CLARIFY → FRAME → FANOUT 的自动生成段，编译挂 checkpointer。"""
     g = StateGraph(GroupState)
     g.add_node("clarify", clarify)
     g.add_node("frame", partial(frame, assign=assign))
-    g.add_node("fanout", partial(fanout, generate=generate))
+    g.add_node("fanout", partial(fanout, generate=generate, persona_provider=persona_provider))
     g.add_edge(START, "clarify")
     g.add_edge("clarify", "frame")
     g.add_edge("frame", "fanout")

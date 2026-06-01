@@ -12,7 +12,7 @@ async def _fake_assign(request, roster):
     return {s.contact_id: f"dim-{s.contact_id}" for s in roster}
 
 
-async def _fake_gen(slot: AgentSlot, request: str) -> Candidate:
+async def _fake_gen(slot: AgentSlot, request: str, history) -> Candidate:
     return Candidate(contact_id=slot.contact_id, dimension=slot.dimension, text=f"[{slot.contact_id}] {request}")
 
 

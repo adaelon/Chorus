@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from ..llm import make_chat_model
 from ..state import AgentSlot, Candidate, GroupState
 from ._common import request_text
-from .generate import GenerateFn, default_generator
+from .generate import GenerateFn, PersonaProvider, default_generator
 
 
 class Pick(BaseModel):
@@ -54,11 +54,12 @@ async def curate(
     *,
     model: ChatOpenAI | None = None,
     generate: GenerateFn | None = None,
+    persona_provider: PersonaProvider | None = None,
 ) -> dict:
     """按顺序 apply 指令，返回更新后的 candidates / picked。"""
     candidates = list(state.candidates)
     picked = list(state.picked)
-    gen = generate or default_generator(model or make_chat_model())
+    gen = generate or default_generator(model or make_chat_model(), persona_provider)
     request = request_text(state)
 
     for cmd in commands:
@@ -79,6 +80,6 @@ async def curate(
                 contact_id=cmd.executor_id
             )
             augmented = f"{request}\n\n请基于以下要点来写：{cmd.point}"
-            candidates.append(await gen(slot, augmented))
+            candidates.append(await gen(slot, augmented, state.history))
 
     return {"candidates": candidates, "picked": picked}
