@@ -26,6 +26,7 @@ from .nodes.clarify import clarify
 from .nodes.extract import ClaimExtractor
 from .nodes.frame import AssignFn, frame
 from .nodes.generate import GenerateFn, PersonaProvider
+from .nodes.human import human_gate
 from .nodes.schedule import PickFn, schedule
 from .nodes.synthesize import synthesize
 from .nodes.turn import turn
@@ -45,8 +46,13 @@ def build_roundtable_recipe(
     persona_provider: PersonaProvider | None = None,
     extract: ClaimExtractor | None = None,
     pick: PickFn | None = None,
+    human_in_loop: bool = False,
 ):
-    """圆桌配方整图：CLARIFY→FRAME→(SCHEDULE⇄TURN)*→SYNTHESIZE。节点依赖可注入以离线测试。"""
+    """圆桌配方整图：CLARIFY→FRAME→(SCHEDULE⇄TURN)*→SYNTHESIZE。节点依赖可注入以离线测试。
+
+    `human_in_loop=True`（S3.4）：每轮发言后插入 `human_gate` interrupt 横切——真人可在
+    任意轮插话（让位/改向），复用 S3.0 interrupt 机制。默认关（自动连续讨论，到预算闸/停）。
+    """
     g = StateGraph(GroupState)
     g.add_node("clarify", clarify)
     g.add_node("frame", partial(frame, assign=assign))
@@ -59,15 +65,23 @@ def build_roundtable_recipe(
     g.add_edge(START, "clarify")
     g.add_edge("clarify", "frame")
     g.add_edge("frame", "schedule")
+
+    if human_in_loop:
+        g.add_node("human_gate", human_gate, destinations=("schedule",))
+        g.add_edge("turn", "human_gate")  # 每轮发言后过打断窗口
+        yield_target = "human_gate"
+    else:
+        g.add_edge("turn", "schedule")
+        yield_target = "synthesize"
+
     g.add_conditional_edges(
         "schedule",
         _route_after_schedule,
         {
             "next_speaker": "turn",
             "stop": "synthesize",
-            "yield_to_human": "synthesize",  # S3.4 改成 interrupt 打断
+            "yield_to_human": yield_target,  # 人在环时让位走 human_gate，否则收尾
         },
     )
-    g.add_edge("turn", "schedule")
     g.add_edge("synthesize", END)
     return g.compile(checkpointer=checkpointer)
