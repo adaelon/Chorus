@@ -101,6 +101,9 @@ class RelayDriver:
         history = snap.values.get("history", []) if snap.values else []
         ai = [m for m in history if m.sender_kind == "ai"]
         for m in ai[pushed:]:
+            if not (m.text or "").strip():
+                logger.warning(f"relay 跳过空发言（{m.sender_id}）——模型可能只出了 reasoning")
+                continue  # 空文本不推（telegram 拒空消息，且无意义）
             try:
                 await self._outbound.speak(group_key, m.sender_id, m.text)
             except Exception as e:  # noqa: BLE001

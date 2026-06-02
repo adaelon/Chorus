@@ -137,6 +137,33 @@ async def test_interjection_redirects_and_enters_history():
     assert len(ai) > 2
 
 
+async def test_empty_turn_not_pushed():
+    """防御：某轮模型只出 reasoning（text 空）→ 不推空消息到群（telegram 拒空）。"""
+
+    async def gen_b_empty(slot, request, history, claims=None):
+        text = "" if slot.contact_id == "B" else f"{slot.contact_id} 有话说"
+        return Candidate(contact_id=slot.contact_id, dimension=slot.dimension, text=text)
+
+    graph = build_roundtable_recipe(
+        MemorySaver(),
+        assign=_fake_assign,
+        generate=gen_b_empty,
+        extract=_fake_extract,
+        pick=_round_robin(),
+        human_in_loop=True,
+    )
+    out = _FakeOutbound()
+
+    async def roster():
+        return ["A", "B", "C"]
+
+    driver = RelayDriver(graph, out, roster, max_turns=3)
+    await driver._run("t", "ada1:GroupMessage:-5", ["A", "B", "C"], "议题")
+
+    ids = [c[1] for c in out.calls]
+    assert ids == ["A", "C"]  # B 空 → 跳过
+
+
 async def test_no_roster_does_not_start():
     out = _FakeOutbound()
 
