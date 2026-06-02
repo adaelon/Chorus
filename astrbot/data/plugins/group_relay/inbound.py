@@ -32,6 +32,14 @@ class Dedup:
         return False
 
 
+def _dedup_key(group_key: str, msg_id: str):
+    """去重键去掉平台（bot 实例）段：unified_msg_origin = "platform:type:session"，
+    N 个 bot 在同群各收到同一条消息时只有 platform 段不同（ada1: / ada2:），
+    故按 "type:session" + msg_id 跨 bot 去重（否则会漏重、转发 N 次）。"""
+    session = group_key.split(":", 1)[1] if ":" in group_key else group_key
+    return (session, msg_id)
+
+
 def decide(*, group_key, msg_id, sender_id, self_id, text, dedup: Dedup) -> str:
     """决定如何处置一条群消息：
 
@@ -45,7 +53,7 @@ def decide(*, group_key, msg_id, sender_id, self_id, text, dedup: Dedup) -> str:
         return "ignore"  # 自己（本 bot）发的，不回流（多 bot 间 AI 识别留 S4.3）
     if not (text or "").strip():
         return "ignore"
-    if dedup.seen_before((group_key, msg_id)):
+    if dedup.seen_before(_dedup_key(group_key, msg_id)):
         return "stop_only"
     return "forward"
 

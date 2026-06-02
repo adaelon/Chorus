@@ -49,6 +49,14 @@ def test_same_msg_id_forwarded_once_then_stop_only():
     assert decide(**common) == "stop_only"   # 第二个 bot 收到同一条 → 不再转发，仅截断
 
 
+def test_cross_bot_same_message_deduped():
+    """N bot（ada1/ada2）在同群各收到同一条：平台段不同但 type:session+msg_id 相同 → 去重。"""
+    d = Dedup()
+    base = dict(msg_id="m1", sender_id="u", self_id="self", text="hi", dedup=d)
+    assert decide(group_key="ada1:GroupMessage:42", **base) == "forward"    # ada1 先到
+    assert decide(group_key="ada2:GroupMessage:42", **base) == "stop_only"  # ada2 同一条 → 去重
+
+
 def test_decide_ignores_self_empty_and_missing():
     d = Dedup()
     base = dict(group_key="g", msg_id="m", sender_id="u", self_id="bot", text="hi", dedup=d)

@@ -38,8 +38,8 @@ class _FakeMsgObj:
 class _FakeEvent:
     """仿真 AstrMessageEvent：只实现 on_group_message 用到的访问器。"""
 
-    def __init__(self, message_id: str):
-        self.unified_msg_origin = "telegram_test:GroupMessage:42"
+    def __init__(self, message_id: str, umo: str = "ada1:GroupMessage:42"):
+        self.unified_msg_origin = umo
         self.message_obj = _FakeMsgObj(message_id, 1717300000)
         self.stopped = False
 
@@ -88,8 +88,8 @@ async def main() -> int:
     await plugin.initialize()
 
     try:
-        e1 = _FakeEvent("m1")
-        e1dup = _FakeEvent("m1")  # 同一条（N bot 收到的副本）
+        e1 = _FakeEvent("m1")  # ada1 收到
+        e1dup = _FakeEvent("m1", umo="ada2:GroupMessage:42")  # 另一个 bot ada2 收到同一条
         e2 = _FakeEvent("m2")
         for e in (e1, e1dup, e2):
             await plugin.on_group_message(e)
