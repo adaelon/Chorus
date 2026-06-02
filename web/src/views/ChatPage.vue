@@ -161,6 +161,7 @@ const handlers = {
     dims.value = Object.fromEntries(e.roster.map((r) => [r.contact_id, r.dimension]))
   },
   delta: (e) => {
+    if (!e.contact_id) return // 防御：无归属的 token（非发言）不建气泡
     // 逐 token：找/建当前发言者的流式气泡
     if (!current || current.sender_id !== e.contact_id) {
       current = {

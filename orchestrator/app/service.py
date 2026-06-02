@@ -171,6 +171,8 @@ def _to_roundtable_event(mode: str, payload) -> dict | None:
             return None
         tags = meta.get("tags") or []
         cid = next((t.split(":", 1)[1] for t in tags if t.startswith("agent:")), None)
+        if not cid:
+            return None  # 无 agent tag = turn 节点内的非发言调用（提点 extractor 等），不当 delta
         text = content if isinstance(content, str) else str(content)
         return {"type": "delta", "contact_id": cid, "text": text}
     if mode == "updates":
