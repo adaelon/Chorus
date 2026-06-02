@@ -190,6 +190,28 @@
 
 ---
 
+## S5 配方核心化（transport/runtime 分层 + 主持人组原语，§6.12/§6.13）
+
+> S3.6/S4.4 让 web 与 telegram 各写了一套驱动同一张圆桌图——重复且每加一种适配再抄一份。
+> S5 把驱动收进 transport 无关的运行时，再让主持人按任务组合原语。先地基(S5.0)，后能力(S5.1/5.2)。
+
+**S5.0 transport 无关会话运行时（统一 web/telegram 驱动）**（§6.12，A3 重构）
+- 做：抽 `SessionRuntime` + 中性事件（入站 `Start|HumanMsg`；出站 `Turn|Ask|Result|Status|Done`）；把圆桌驱动逻辑收进 runtime（**一份**）；web `/roundtable` SSE 与 telegram `RelayDriver` 改为 runtime 的两个 **adapter**（各做"中性事件 ↔ transport"互转）；`group_key`/`bot_ref` 在 adapter 边界规范化成 `session_id`/`identity_id`。
+- 不做：L2 选配方 / L3 组原语（S5.1/5.2）；改原语或圆桌图拓扑（纯搬运，行为不变）。
+- 判据：`pytest` — runtime 出 OutboundEvent 序列正确（起场→`Turn*`→`Done`；插话→改向）；web/telegram 两 adapter 把**同一** runtime 事件各自映射对（离线假 transport）；**既有 web SSE 与 telegram 行为不变**（A3，原 `test_roundtable_service`/`test_relay` 仍绿或等价迁移）。
+
+**S5.1 L2 主持人荐配方**（§6.13）
+- 做：`select_recipe(task)->recipe` 廉价 LLM 调用，在**已测静态配方库**（圆桌/扇出）里按任务选；选不准兜底默认。
+- 不做：L3 动态组原语。
+- 判据：`pytest` — 给"讨论型/创作型"任务各选对配方；非法/低信心→默认兜底（注入假 selector 离线）。
+
+**S5.2 L3 主持人组原语（auto 配方，带闸）**（§6.13）
+- 做：`decide_next` 泛化到 `Fanout|Speak|Curate|AskHuman|Synthesize|Stop`；引擎单循环 `PLAN→dispatch(原语)→PLAN`；做成库里一个 "auto" 配方（L1/L2 仍可选回静态配方兜底）；硬预算/步数闸。
+- 不做：可视化自拼 DSL（更后）。
+- 判据：`pytest` — auto 配方对一个任务组出"先 Fanout 后 Speak 轮转再 Synthesize"的合法序列（注入假 planner）；步数闸到顶必停；每步原语结果确定可验（§B2）。
+
+---
+
 ## 依赖与执行顺序
 
 ```
@@ -199,6 +221,7 @@ S1.6 ─→ S2.0(durable checkpointer) ; S2.1 → S2.2 → S2.3   │   S2.4 需
 S1.6 ─→ S3.0(interrupt 化扇出, 模型A) ──→ S3.4 复用同一 interrupt 机制
 S2.* ─→ S3.1 → S3.1b(点账本+投影器) → S3.1c(中立提点) → S3.2 → S3.3(验收) → S3.4 → S3.5 ; S3.6/S3.7 需前端基座(S1.7)
 S3(引擎) ─→ S4.1 → S4.2 → S4.3 → S4.4 ; S4.5 需 S1.7
+S3.6 + S4.4 ─→ S5.0(runtime/transport 分层, 统一驱动) → S5.1(L2 荐配方) → S5.2(L3 组原语)
 ```
 
 **三个关键验收点**：

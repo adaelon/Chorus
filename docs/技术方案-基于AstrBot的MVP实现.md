@@ -278,6 +278,24 @@ class Message(SQLModel):     # 群历史(=短期记忆)
 **何时回头**：点提取质量不足时，引入点的状态/对立关系图（第二层）或可配的近场 K / 提取模型。
 **落地**：圆桌组装（S3.3）前点账本须就位——**S3.1b**（账本基座+投影器抽象，claims 空时退化为原文窗口）→ **S3.1c**（中立提取原语 + TURN 集成提点）→ S3.2/S3.3。
 
+### §6.12 transport / runtime 分层（统一驱动）
+**决策**：抽 transport 无关的 `SessionRuntime` + 中性事件；web/telegram/CLI 都退化为 adapter。
+**否决**：
+- web 与 telegram 各写一套驱动（现状 S3.6/S4.4）：同一张圆桌图被两份驱动 + 两份出站映射（`_to_roundtable_event` vs `RelayDriver._push_new`）驱动，每加一种适配就再抄一份。
+- 继续在 service 端点里直接驱动图：transport 细节（SSE/HTTP/桥）渗进核心。
+**命门**：定准中性事件——入站 `Start(session_id,task,roster) | HumanMsg(session_id,text)`，出站 `Turn(identity_id,text,dim) | Ask(q) | Result(text) | Status(stage) | Done(reason)`；`group_key`/`bot_ref` 在 adapter 边界规范化成中性 `session_id`/`identity_id`（不让 AstrBot/telegram 概念进核心）。
+**何时回头**：接第三种 transport（CLI/QQ），或上 §6.13 的 L2/L3 前——这是其地基。
+**展开**：切片 S5.0。
+
+### §6.13 配方分层 L1→L3（主持人按任务组原语）
+**决策**：配方 = 主持人在原语集上的策略，分 L1 用户选 / L2 主持人荐 / L3 主持人逐步组原语；L3 用 §B2 框定。
+**否决**：
+- 一步到 L3 取代静态配方：LLM 动态流程难穷举测、易跑偏/死循环/烧钱。
+- 永远停在 L1：无法按任务自适应（用户诉求）。
+**命门**：L3 安全性靠 §B2——主持人 LLM 只"选下一个原语"（输入/建议），原语执行 + 预算/步数闸是确定性裁决；`decide_next` 从 `NextSpeaker|Yield|Stop` 泛化到 `Fanout|Speak|Curate|AskHuman|Synthesize|Stop`，"圆桌"/"扇出"退化为该策略的特例；静态配方留作兜底。
+**何时回头**：§6.12 runtime 分层就位后——先做 L2（在已测配方库里选），再把 L3 做成库里一个带闸的 "auto" 配方。承接 §6.6（L1 已做、L3 预留）。
+**展开**：切片 S5.1（L2）/ S5.2（L3）。
+
 ---
 
 ## 7. MVP 落地顺序（每步独立可验）
