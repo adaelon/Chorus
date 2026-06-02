@@ -23,18 +23,18 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langgraph.types import Command
 from pydantic import BaseModel, Field
 from sqlmodel import select
 
 from .db.engine import init_models, make_engine, make_session_factory
 from .db.models import Contact
 from .db.repo import persona_provider_from, reputation_adjuster_from
-from .nodes.curate import CurateCommand, Eliminate, Pick, Reassign, ReputationAdjuster, curate
+from .nodes.curate import Eliminate, Pick, Reassign, ReputationAdjuster
 from .nodes.frame import AssignFn
 from .nodes.generate import GenerateFn, PersonaProvider
-from .nodes.synthesize import synthesize
 from .recipes import build_fanout_recipe
-from .state import AgentSlot, GroupState, Msg
+from .state import AgentSlot, Msg
 
 AnyCommand = Annotated[Union[Pick, Eliminate, Reassign], Field(discriminator="kind")]
 
@@ -103,14 +103,22 @@ def _to_event(mode: str, payload) -> dict | None:
     return None
 
 
-async def _load_state(graph, group_key: str) -> GroupState:
+def _interrupt_value(result) -> dict | None:
+    """从 ainvoke 结果取 interrupt payload（图暂停在 curate）；未暂停返回 None。"""
+    intr = result.get("__interrupt__") if isinstance(result, dict) else None
+    if intr:
+        return intr[0].value
+    return None
+
+
+async def _require_thread(graph, group_key: str) -> None:
+    """resume 前置校验：线程须已有 checkpoint（即先 /inbound 过）。"""
     snap = await graph.aget_state(_cfg(group_key))
     if not snap.values:
         raise HTTPException(
             status_code=404,
             detail=f"group {group_key} not found; call /inbound first",
         )
-    return GroupState(**snap.values)
 
 
 def create_app(
@@ -137,13 +145,21 @@ def create_app(
         try:
             if checkpointer is not None:
                 app.state.graph = build_fanout_recipe(
-                    checkpointer, assign=assign, generate=generate, persona_provider=pp
+                    checkpointer,
+                    assign=assign,
+                    generate=generate,
+                    persona_provider=pp,
+                    reputation_adjuster=ra,
                 )
                 yield
             else:
                 async with AsyncSqliteSaver.from_conn_string(db_path) as saver:
                     app.state.graph = build_fanout_recipe(
-                        saver, assign=assign, generate=generate, persona_provider=pp
+                        saver,
+                        assign=assign,
+                        generate=generate,
+                        persona_provider=pp,
+                        reputation_adjuster=ra,
                     )
                     yield
         finally:
@@ -172,23 +188,34 @@ def create_app(
                 sender_id="human", sender_kind="human", text=req.request
             ),
         }
-        out = await graph.ainvoke(state_in, _cfg(req.group_key))
-        return {"candidates": out["candidates"]}
+        # 跑到 CURATE 的 interrupt 暂停，候选从 interrupt payload 取。
+        result = await graph.ainvoke(state_in, _cfg(req.group_key))
+        payload = _interrupt_value(result)
+        candidates = payload["candidates"] if payload else result.get("candidates", [])
+        return {"candidates": candidates}
 
     @app.post("/curate")
     async def curate_ep(req: CurateReq, request: Request):
         graph = request.app.state.graph
-        state = await _load_state(graph, req.group_key)
-        commands: list[CurateCommand] = list(req.commands)
-        result = await curate(
-            state,
-            commands,
-            generate=generate,
-            persona_provider=request.app.state.persona_provider,
-            reputation_adjuster=request.app.state.reputation_adjuster,
+        cfg = _cfg(req.group_key)
+        await _require_thread(graph, req.group_key)
+        # resume：apply 指令 → 图回到 CURATE 再次 interrupt，新候选/picked 从 payload 取。
+        result = await graph.ainvoke(
+            Command(
+                resume={
+                    "action": "curate",
+                    "commands": [c.model_dump() for c in req.commands],
+                }
+            ),
+            cfg,
         )
-        await graph.aupdate_state(_cfg(req.group_key), result)
-        return result
+        payload = _interrupt_value(result)
+        if payload:
+            return {"candidates": payload["candidates"], "picked": payload["picked"]}
+        return {
+            "candidates": result.get("candidates", []),
+            "picked": result.get("picked", []),
+        }
 
     @app.post("/inbound/stream")
     async def inbound_stream(req: InboundReq, request: Request):
@@ -243,10 +270,11 @@ def create_app(
     @app.post("/synthesize")
     async def synthesize_ep(req: GroupReq, request: Request):
         graph = request.app.state.graph
-        state = await _load_state(graph, req.group_key)
-        result = await synthesize(state)
-        await graph.aupdate_state(_cfg(req.group_key), result)
-        return result
+        cfg = _cfg(req.group_key)
+        await _require_thread(graph, req.group_key)
+        # resume(synthesize)：CURATE 让位 → SYNTHESIZE 终端节点跑到 END，读最终 output。
+        result = await graph.ainvoke(Command(resume={"action": "synthesize"}), cfg)
+        return {"output": result.get("output")}
 
     # ---- Contact 注册表 CRUD（S2.4）----
 

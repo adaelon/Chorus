@@ -4,6 +4,9 @@
   pick      选中某 agent 的候选 / 其中一个点 → 进 picked
   eliminate 淘汰某 agent 的候选 → 从 candidates 移除（软，仅本场；信誉写入留 S2.3）
   reassign  把某个点交给 executor 写 → 触发对其一次定向再生成，追加新候选
+
+S3.0：CURATE 进图，用 LangGraph `interrupt` 做人在环（暂停—等人—resume，多轮循环）。
+`curate()` 仍是纯 apply（无副作用之外不碰图），`curate_interrupt_node` 在其上加打断/循环。
 """
 
 from __future__ import annotations
@@ -12,6 +15,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from typing import Literal
 
 from langchain_openai import ChatOpenAI
+from langgraph.types import Command, interrupt
 from pydantic import BaseModel
 
 from ..llm import make_chat_model
@@ -38,6 +42,16 @@ class Reassign(BaseModel):
 
 
 CurateCommand = Pick | Eliminate | Reassign
+
+_COMMAND_TYPES = {"pick": Pick, "eliminate": Eliminate, "reassign": Reassign}
+
+
+def parse_command(d) -> CurateCommand:
+    """把 resume payload 里的命令（dict 或已构造对象）规整成命令模型。"""
+    if isinstance(d, (Pick, Eliminate, Reassign)):
+        return d
+    kind = d["kind"]
+    return _COMMAND_TYPES[kind](**d)
 
 # 信誉软加权（§8.4）：人工信号调整权重，非处决。
 ReputationAdjuster = Callable[[str, float], Awaitable[None]]
@@ -96,3 +110,42 @@ async def curate(
             candidates.append(await gen(slot, augmented, state.history))
 
     return {"candidates": candidates, "picked": picked}
+
+
+def _curate_payload(state: GroupState) -> dict:
+    return {
+        "type": "curate",
+        "candidates": [c.model_dump() for c in state.candidates],
+        "picked": [c.model_dump() for c in state.picked],
+    }
+
+
+async def curate_interrupt_node(
+    state: GroupState,
+    *,
+    model: ChatOpenAI | None = None,
+    generate: GenerateFn | None = None,
+    persona_provider: PersonaProvider | None = None,
+    reputation_adjuster: ReputationAdjuster | None = None,
+) -> Command:
+    """图节点：暂停（interrupt）暴露当前候选给人工，按 resume 指令循环或转 synthesize。
+
+    resume 协议（service 转发）：
+      {"action": "curate", "commands": [...]} → apply 后回到本节点（再次 interrupt，多轮）
+      {"action": "synthesize"}                → goto synthesize（终端节点）
+    用 `Command(goto=...)` 自路由——引擎无 if/else 特例，S3.4 圆桌打断复用同一机制。
+    """
+    resume = interrupt(_curate_payload(state))
+    action = resume.get("action", "synthesize") if isinstance(resume, dict) else "synthesize"
+    if action != "curate":
+        return Command(goto="synthesize")
+    commands = [parse_command(d) for d in (resume.get("commands") or [])]
+    delta = await curate(
+        state,
+        commands,
+        model=model,
+        generate=generate,
+        persona_provider=persona_provider,
+        reputation_adjuster=reputation_adjuster,
+    )
+    return Command(goto="curate", update=delta)
