@@ -80,6 +80,63 @@ async def test_inbound_starts_discussion_and_pushes_each_turn():
     assert all("说了一句" in c[2] for c in out.calls)
 
 
+async def test_next_resume_consumes_interjection_queue():
+    """S4.4b：队列有人类插话 → resume 带 interject；空 → 继续。"""
+    out = _FakeOutbound()
+
+    async def roster():
+        return ["A"]
+
+    driver = RelayDriver(_graph(), out, roster)
+    driver._queues["t1"] = asyncio.Queue()
+    assert driver._next_resume("t1") == {"interject": None}  # 空队列：继续
+    driver._queues["t1"].put_nowait("换个方向：聚焦现金流")
+    assert driver._next_resume("t1") == {"interject": "换个方向：聚焦现金流"}  # 消费插话
+    assert driver._next_resume("t1") == {"interject": None}  # 已取走
+
+
+async def test_inbound_while_running_enqueues_interjection():
+    """S4.4b：讨论进行中再来人类消息 → 入队（不起新场），status=interjected。"""
+    out = _FakeOutbound()
+
+    async def roster():
+        return ["A"]
+
+    driver = RelayDriver(_graph(), out, roster)
+    thread = canonical_thread("ada1:GroupMessage:-9")
+    driver._queues[thread] = asyncio.Queue()
+    driver._tasks[thread] = asyncio.create_task(asyncio.sleep(5))  # 模拟进行中
+    try:
+        res = await driver.handle_inbound("ada1:GroupMessage:-9", "插一句：预算有限")
+        assert res["status"] == "interjected"
+        assert driver._queues[thread].get_nowait() == "插一句：预算有限"
+    finally:
+        driver._tasks[thread].cancel()
+
+
+async def test_interjection_redirects_and_enters_history():
+    """S4.4b 端到端：预置插话 → 讨论改向（插话进 history、预算归零后继续多发言）。"""
+    out = _FakeOutbound()
+
+    async def roster():
+        return ["A", "B"]
+
+    driver = RelayDriver(_graph(), out, roster, max_turns=2)
+    thread = canonical_thread("ada1:GroupMessage:-7")
+    # 先建好队列并预置一条插话，再手动跑 _run（绕过后台 task 的时序）
+    driver._queues[thread] = asyncio.Queue()
+    driver._queues[thread].put_nowait("请聚焦现金流")
+    await driver._run(thread, "ada1:GroupMessage:-7", ["A", "B"], "要不要做付费会员")
+
+    snap = await driver._graph.aget_state({"configurable": {"thread_id": thread}})
+    hist = snap.values["history"]
+    # 插话被消费、进了群历史（改向）
+    assert any(m.sender_kind == "human" and "现金流" in m.text for m in hist)
+    # 预算归零后又继续发言 → AI 发言数 > 初始预算 2（证明改向延续了讨论）
+    ai = [m for m in hist if m.sender_kind == "ai"]
+    assert len(ai) > 2
+
+
 async def test_no_roster_does_not_start():
     out = _FakeOutbound()
 

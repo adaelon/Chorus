@@ -177,10 +177,11 @@
 - 判据：N 个 bot 都 RUNNING；大脑发 `/outbound` 能精确路由到对应 bot（手动确认）。
 - 落地：`ContactIn.bot_ref` + `bot_ref_provider_from` + `OutboundClient`(contact→bot_ref→POST 桥) + ContactsPage bot_ref 字段；orchestrator 87 测 + 出站精确路由 smoke PASS（真 astrbot 两假 platform）。真 token/关 privacy 手动（README）。详见代码链路。
 
-**S4.4 端到端联调**
+**S4.4 端到端联调 ✅**（拆 a/b：a 入站起圆桌+后台多轮+出站推群 / b 人插话改向）
 - 做：把大脑产出经桥推进 Telegram 群；人在群里发问/插话经桥回大脑。
 - 不做：QQ 官方（需求 §10，Phase 后）。
 - 判据：Telegram 群发问 → N bot **各以独立身份**冒泡发言 → 人插话被接住改向（端到端手动验证脚本/录屏）。
+- 落地：`app/relay.py:RelayDriver`（canonical_thread + 后台 step-loop 多轮 + 插话队列消费）+ `/relay/inbound` + `roster_provider`（有 bot_ref 的 Contact）+ 插件入站投 /relay/inbound。orchestrator 93 测（含端到端改向）。真 telegram 群发问→N bot 轮流→插话改向 = 手动验。详见代码链路。
 
 **S4.5 PlatformPage 复用成 N bot 管理**
 - 做：复用 dashboard `PlatformPage` 管 N 个 bot 实例，连 `adminApi`(AstrBot)。

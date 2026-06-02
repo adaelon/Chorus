@@ -7,7 +7,8 @@
 （桥的 POST 会超时）。故 `/relay/inbound` 立即返回，讨论在后台跑；每轮 `ainvoke` 推进一步
 （圆桌 human_in_loop=True 每轮停在 human_gate），驱动器 `resume` 续轮并把新发言推群。
 
-S4.4a：自动多轮 + 推送（插话先入队不消费）。S4.4b：human_gate 处消费队列里的人类插话 → 改向。
+S4.4a：自动多轮 + 推送。S4.4b：讨论中人类消息入队 → 每轮 human_gate 处消费 →
+`resume({interject:text})` → 该插话进 history + 预算闸归零 → 圆桌改向继续。
 """
 
 from __future__ import annotations
@@ -85,7 +86,13 @@ class RelayDriver:
             logger.error(f"relay 讨论 {thread} 异常：{e}")
 
     def _next_resume(self, thread: str) -> dict:
-        """S4.4a：恒为继续（不插话）。S4.4b 改为优先消费队列里的人类插话。"""
+        """每轮 human_gate 处：队列里有人类插话则带上（→ 消费、预算归零、改向），否则继续。"""
+        q = self._queues.get(thread)
+        if q is not None and not q.empty():
+            try:
+                return {"interject": q.get_nowait()}
+            except asyncio.QueueEmpty:
+                pass
         return {"interject": None}
 
     async def _push_new(self, group_key: str, cfg: dict, pushed: int) -> int:
