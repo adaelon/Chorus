@@ -206,7 +206,7 @@
 - 不做：L3 动态组原语。
 - 判据：`pytest` — 给"讨论型/创作型"任务各选对配方；非法/低信心→默认兜底（注入假 selector 离线）。
 
-**S5.2 L3 主持人组原语（auto 配方，带闸）**（§6.13）
+**S5.2 L3 主持人组原语（auto 配方，带闸）✅**（§6.13，引擎能力；service 接入留后）
 - 做：`decide_next` 泛化到 `Fanout|Speak|Curate|AskHuman|Synthesize|Stop`；引擎单循环 `PLAN→dispatch(原语)→PLAN`；做成库里一个 "auto" 配方（L1/L2 仍可选回静态配方兜底）；硬预算/步数闸。
 - 不做：可视化自拼 DSL（更后）。
 - 判据：`pytest` — auto 配方对一个任务组出"先 Fanout 后 Speak 轮转再 Synthesize"的合法序列（注入假 planner）；步数闸到顶必停；每步原语结果确定可验（§B2）。
