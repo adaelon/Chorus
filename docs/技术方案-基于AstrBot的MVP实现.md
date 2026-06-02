@@ -296,6 +296,14 @@ class Message(SQLModel):     # 群历史(=短期记忆)
 **何时回头**：§6.12 runtime 分层就位后——先做 L2（在已测配方库里选），再把 L3 做成库里一个带闸的 "auto" 配方。承接 §6.6（L1 已做、L3 预留）。
 **展开**：切片 S5.1（L2）/ S5.2（L3）。
 
+### §6.14 bot 实例管理归属（S4.5 缓做）
+**决策**：N bot 实例的增删启停用 AstrBot 自带 dashboard，**不搬进 Chorus 产品 web**（S4.5 缓做）。
+**否决**：
+- 把 `PlatformPage` 搬进 Chorus web 连 `adminApi`：把产品 UI 重新耦合回 AstrBot 管理接口（违 §6.12 transport 无关），属管理域、当前低产品价值（§6.8 用到再移）。AstrBot dashboard 已实测够用（配 ada1/ada2 即用此）。
+**命门**：管理域 / 产品域分治——产品 web 只碰 `brainApi`(core)，AstrBot 概念不渗进产品 UI。
+**何时回头**：要做**统一运维台**（Chorus web 管一切、对运维藏掉 AstrBot）时。
+**展开**：切片 S4.5（缓做）。
+
 ---
 
 ## 7. MVP 落地顺序（每步独立可验）

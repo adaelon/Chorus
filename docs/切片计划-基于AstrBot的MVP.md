@@ -183,10 +183,11 @@
 - 判据：Telegram 群发问 → N bot **各以独立身份**冒泡发言 → 人插话被接住改向（端到端手动验证脚本/录屏）。
 - 落地：`app/relay.py:RelayDriver`（canonical_thread + 后台 step-loop 多轮 + 插话队列消费）+ `/relay/inbound` + `roster_provider`（有 bot_ref 的 Contact）+ 插件入站投 /relay/inbound。orchestrator 93 测（含端到端改向）。真 telegram 群发问→N bot 轮流→插话改向 = 手动验。详见代码链路。
 
-**S4.5 PlatformPage 复用成 N bot 管理**
+**S4.5 PlatformPage 复用成 N bot 管理 —— 缓做（可选）**
 - 做：复用 dashboard `PlatformPage` 管 N 个 bot 实例，连 `adminApi`(AstrBot)。
 - 不做：产品域逻辑。
 - 判据：浏览器 — 增删/启停 bot 实例，状态正确（手动步骤）。
+- **缓做原因（2026-06-02）**：AstrBot 自带 dashboard 已能管平台实例（实测配 ada1/ada2 即用此）；搬进 Chorus web 会把产品 UI 重新耦合回 adminApi(AstrBot)，与 §6.12（transport 无关）相悖；属管理域、当前低产品价值（§6.8 用到再移）。**何时回头**：要做统一运维台（Chorus web 管一切、对运维藏掉 AstrBot）时。
 
 ---
 
