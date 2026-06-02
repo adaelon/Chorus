@@ -149,10 +149,11 @@
 - 判据：`pytest`（圆桌端点起/续/插话/澄清分流）；浏览器 — 圆桌多身份气泡正确归属、插话被接住、模糊需求弹澄清问（手动步骤）。
 - **遗留取舍记录**：① `clarify` 的 `assess`(信心 LLM) 在 interrupt resume 时会重跑一次（assess 之后才 interrupt，节点整体重执行）——MVP 接受；接真实 LLM 后若成本敏感，拆成 `clarify(只assess)→Command(goto)→await_clarify(只interrupt)` 两节点（仿 curate 分离 LLM 与 interrupt）。② checkpoint 反序列化有 msgpack unregistered-type 警告（`AgentSlot/Msg/Claim`），未来 LangGraph 版本会 block——需注册类型或调 serde。
 
-**S3.7 RecipePicker（L1 选配方）**
+**S3.7 RecipePicker（L1 选配方）✅**
 - 做：入口让用户在「圆桌」「扇出」间选配方启动一场。
 - 不做：L2 荐配方 / L3 自拼（§6.6 留后）。
 - 判据：浏览器 — 选圆桌走群视图、选扇出走 CuratePage（手动步骤）。
+- 落地：Home 页改成两卡配方选择（圆桌→/roundtable、扇出→/curate）+ 连通 chip；vite build 通过，浏览器手动验。详见代码链路。
 
 ---
 
