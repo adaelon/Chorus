@@ -304,6 +304,15 @@ class Message(SQLModel):     # 群历史(=短期记忆)
 **何时回头**：要做**统一运维台**（Chorus web 管一切、对运维藏掉 AstrBot）时。
 **展开**：切片 S4.5（缓做）。
 
+### §6.15 发布形态（pip 安装即用）
+**决策**：core+web 打成一个 pip app（`pipx install chorus` → `chorus serve` 出完整 UI）；telegram 桥外置。
+**否决**：
+- 全套（含 telegram）塞进 pip：需 AstrBot 进程 / Node / 平台账号，pip 装不了——全套用 docker-compose / quickstart。
+- 只发引擎库（`from chorus import ...`）：是库非产品，装了不能直接用。
+**命门**：必须先把 LLM 配置从 `talk-agent/.env`（`CHORUS_DOTENV` 硬编码）解耦成标准环境变量（`CHORUS_LLM_BASE_URL/API_KEY/MODEL`），否则别人装了跑不起来。§6.12 已让 core 与 transport 解耦——故 pip 包 = core+web，telegram 天然在包外（分层必然，非缺陷）。
+**何时回头**：要"全套一键"时上 docker-compose；telegram 想随包带时另议（仍进不了 pip）。
+**展开**：切片 S6.0（配置解耦+包骨架+CLI）/ S6.1（打进前端 dist）/ S6.2（PyPI 发布 + group_relay 独立分发）。
+
 ---
 
 ## 7. MVP 落地顺序（每步独立可验）

@@ -213,6 +213,26 @@
 
 ---
 
+## S6 发布（pip 安装即用，§6.15）
+
+> 目标：`pipx install chorus` → `chorus serve` → 浏览器开 localhost 就是完整产品（圆桌/扇出/好友/L2 选配方），不碰 telegram 也能用。telegram 桥外置（§6.15：进不了 pip，分层必然）。
+
+**S6.0 配置解耦 + chorus 包骨架 + CLI**
+- 做：LLM 配置从 `talk-agent/.env`（`CHORUS_DOTENV` 硬编码）换成**标准环境变量**（`CHORUS_LLM_BASE_URL/API_KEY/MODEL`，缺失给清晰报错）；`orchestrator/app/` → 顶层包 `chorus/`；`pyproject.toml` 填 `[project]`(name/version/deps) + `[project.scripts] chorus="chorus.cli:main"`；CLI `chorus serve --port`；sqlite 落 `~/.chorus/`（或 `--data-dir`）。
+- 不做：打前端、发 PyPI（S6.1/6.2）。
+- 判据：`pytest` 仍绿（配置/改包不破坏行为，A3）；`chorus serve` 起服务 `/health` 200；缺 LLM 配置时给清晰报错（手动/测）。
+
+**S6.1 打进前端 dist + StaticFiles**
+- 做：`npm run build` 的 `dist/` 作 package data 随包带；FastAPI `StaticFiles` 挂 `/`；一个进程同出 API+UI。
+- 不做：PyPI 发布。
+- 判据：本地装包后 `chorus serve` → 浏览器 localhost 出完整产品 UI（手动）。
+
+**S6.2 PyPI 发布 + group_relay 独立分发**
+- 做：`hatchling` build → `pipx install chorus` 干净环境验；`group_relay` 作**独立 AstrBot 插件**分发（自包含目录 + README，进不了 pip）；可选 docker-compose 全套（含 AstrBot/telegram）。
+- 判据：干净环境 `pipx install chorus` → `chorus serve` 即用（手动/录屏）。
+
+---
+
 ## 依赖与执行顺序
 
 ```
@@ -223,6 +243,7 @@ S1.6 ─→ S3.0(interrupt 化扇出, 模型A) ──→ S3.4 复用同一 inter
 S2.* ─→ S3.1 → S3.1b(点账本+投影器) → S3.1c(中立提点) → S3.2 → S3.3(验收) → S3.4 → S3.5 ; S3.6/S3.7 需前端基座(S1.7)
 S3(引擎) ─→ S4.1 → S4.2 → S4.3 → S4.4 ; S4.5 需 S1.7
 S3.6 + S4.4 ─→ S5.0(runtime/transport 分层, 统一驱动) → S5.1(L2 荐配方) → S5.2(L3 组原语)
+S5(core 稳) ─→ S6.0(配置解耦+包骨架+CLI) → S6.1(打进前端 dist) → S6.2(PyPI 发布 + group_relay 独立分发)
 ```
 
 **三个关键验收点**：
