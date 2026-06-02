@@ -1,11 +1,12 @@
 """S3.1 判据：连续两次 TURN，第二次生成时能看到第一次发言（上文可见性）；
 history 追加 + turns_since_human 累积。注入假 generate，离线确定性。
+S3.1c：发言后中立提点入账本（注入假 extract）。
 """
 
 from __future__ import annotations
 
 from app.nodes.turn import turn
-from app.state import AgentSlot, Candidate, GroupState, Msg
+from app.state import AgentSlot, Candidate, Claim, GroupState, Msg
 
 
 def _make_capturing_gen(seen: list[list[Msg]]):
@@ -20,6 +21,11 @@ def _make_capturing_gen(seen: list[list[Msg]]):
     return gen
 
 
+async def _fake_extract(text: str, speaker_id: str, turn_idx: int) -> list[Claim]:
+    """假提点：每次发言压成一条带归属的点（离线、确定性）。"""
+    return [Claim(speaker_id=speaker_id, text=f"{speaker_id}的点", turn=turn_idx)]
+
+
 def _state() -> GroupState:
     return GroupState(
         group_key="g",
@@ -31,7 +37,7 @@ def _state() -> GroupState:
 
 
 async def test_turn_appends_message_and_increments():
-    out = await turn(_state(), generate=_make_capturing_gen([]))
+    out = await turn(_state(), generate=_make_capturing_gen([]), extract=_fake_extract)
     assert out["turns_since_human"] == 1
     last = out["history"][-1]
     assert last.sender_id == "A" and last.sender_kind == "ai"
@@ -43,10 +49,10 @@ async def test_second_turn_sees_first_turn_speech():
     gen = _make_capturing_gen(seen)
 
     state = _state()
-    out1 = await turn(state, generate=gen)
+    out1 = await turn(state, generate=gen, extract=_fake_extract)
     # 用 A 发言后的 state 跑第二次（轮到 B）
     state2 = state.model_copy(update={**out1, "next_speaker": "B"})
-    out2 = await turn(state2, generate=gen)
+    out2 = await turn(state2, generate=gen, extract=_fake_extract)
 
     # B 发言时看到的上文里含 A 刚说的话（上文可见性）
     assert any(m.sender_id == "A" and m.text == "A 的发言" for m in seen[1])
@@ -57,5 +63,19 @@ async def test_second_turn_sees_first_turn_speech():
 
 async def test_no_next_speaker_is_noop():
     state = _state().model_copy(update={"next_speaker": None})
-    out = await turn(state, generate=_make_capturing_gen([]))
+    out = await turn(state, generate=_make_capturing_gen([]), extract=_fake_extract)
     assert out == {}
+
+
+async def test_two_turns_accumulate_attributed_claims():
+    """S3.1c：两轮 TURN 后点账本含两人归属。"""
+    state = _state()
+    out1 = await turn(state, generate=_make_capturing_gen([]), extract=_fake_extract)
+    state2 = state.model_copy(update={**out1, "next_speaker": "B"})
+    out2 = await turn(state2, generate=_make_capturing_gen([]), extract=_fake_extract)
+
+    claims = out2["claims"]
+    by_speaker = {c.speaker_id for c in claims}
+    assert by_speaker == {"A", "B"}  # 两人归属都在账本
+    assert any(c.speaker_id == "A" and c.text == "A的点" for c in claims)
+    assert any(c.speaker_id == "B" and c.text == "B的点" for c in claims)

@@ -13,6 +13,7 @@ from langchain_openai import ChatOpenAI
 from ..llm import make_chat_model
 from ..state import AgentSlot, GroupState, Msg
 from ._common import request_text
+from .extract import ClaimExtractor, default_claim_extractor
 from .generate import GenerateFn, PersonaProvider, default_generator
 
 
@@ -33,16 +34,19 @@ async def turn(
     model: ChatOpenAI | None = None,
     generate: GenerateFn | None = None,
     persona_provider: PersonaProvider | None = None,
+    extract: ClaimExtractor | None = None,
 ) -> dict:
-    """让 `next_speaker` 发一次言，追加进 history，turns_since_human += 1。
+    """让 `next_speaker` 发一次言，追加进 history，turns_since_human += 1，并中立提点入账本。
 
-    生成时把当前 `history` 喂给 generate → 后发言的 agent 看得到先发言的内容（上文可见性）。
+    生成时把 `history`(近场原文) + `claims`(远场点账本) 喂给 generate（投影器 §6.11）→
+    后发言者既看得到近期原文、也看得到全程的"点"。发言后中立提点追加进 `state.claims`。
     无 next_speaker 则空步（SCHEDULE 未决/让位人类，留 S3.2/S3.4）。
     """
     slot = _speaker_slot(state)
     if slot is None:
         return {}
     gen = generate or default_generator(model or make_chat_model(), persona_provider)
+    ext = extract or default_claim_extractor(model or make_chat_model())
     request = request_text(state)
     cand = await gen(slot, request, state.history, state.claims)
     msg = Msg(
@@ -51,7 +55,10 @@ async def turn(
         text=cand.text,
         dimension=slot.dimension,
     )
+    turn_idx = state.turns_since_human + 1
+    new_claims = await ext(cand.text, slot.contact_id, turn_idx)
     return {
         "history": [*state.history, msg],
-        "turns_since_human": state.turns_since_human + 1,
+        "turns_since_human": turn_idx,
+        "claims": [*state.claims, *new_claims],
     }
