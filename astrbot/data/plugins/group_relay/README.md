@@ -1,6 +1,6 @@
 # group_relay — Chorus ↔ AstrBot 窄消息桥
 
-只搬字节，不含业务智能（LLM/人设/调度/记忆全在编排服务）。当前实现 **S4.1：出站**。
+只搬字节，不含业务智能（LLM/人设/调度/记忆全在编排服务）。已实现 **S4.1 出站 + S4.2 入站**。
 
 ## 位置与运行
 
@@ -24,10 +24,27 @@ POST http://127.0.0.1:9876/outbound
 - 成功 → `{"ok": true, "bot_id": ..., "session": "bot_id:type:session"}`，群里以该 bot 身份发出 `text`。
 - 未找到该 bot 实例 → 404；缺字段/非法 group_key → 400。
 
+## 入站 API（S4.2）
+
+群消息钩子（`@filter.event_message_type(GROUP_MESSAGE)`，高优先级）规范化每条群消息成
+InboundMsg → POST `{brain_url}/inbound`（`brain_url` 可在插件配置改，默认 :8900）：
+
+```
+{ group_key, platform, sender_id, sender_name, sender_kind, text, native_msg_id, ts }
+```
+
+- **去重**：按 `(group_key, native_msg_id)` 先到先得——多 bot 在同群各收到同一条人类消息，只转一次。
+- **截断**：转发后（及重复副本）`event.stop_event()`，阻止 AstrBot 用自己的 provider 自动回复。
+- 自己（本 bot）发的 / 空文本 → 忽略（不转发不截断）；多 bot 间 AI 发言识别留 S4.3。
+- 大脑侧对 InboundMsg 的处理（入会话/路由）= S4.4；当前默认 POST 到 `/inbound`，契约对接随 S4.4 定。
+
 ## 判据（手动，单 bot）
 
+**出站**：
 1. AstrBot 配一个 telegram bot 实例（记其实例 id）、把 bot 拉进一个群、发一条消息拿到该群的 `unified_msg_origin`（日志/调试可见）。
 2. `curl -X POST http://127.0.0.1:9876/outbound -H 'Content-Type: application/json' -d '{"group_key":"<umo>","bot_id":"<实例id>","text":"出站测试"}'`
 3. 期望：该 bot 在目标群发出"出站测试"，curl 返回 `{"ok":true,...}`。
 
-入站 / 去重 / stop_event / 多 bot = S4.2+。
+**入站**：在群里发一条消息 → 大脑 `/inbound` 收到一条 InboundMsg；**AstrBot 自身不自动回复**（stop_event 生效）。
+
+去重 / 转发决策 / 规范化逻辑离线测：`pytest astrbot/data/plugins/group_relay/tests`。多 bot 映射 = S4.3。
