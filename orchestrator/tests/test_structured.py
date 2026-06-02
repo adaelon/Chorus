@@ -25,6 +25,36 @@ class _FakeModel:
         yield AIMessageChunk(content=self.content)
 
 
+class _FlakyModel:
+    """假模型：前 `empties` 次 astream 返回空 content（模拟 kimi 只出 reasoning），之后返回有效 JSON。"""
+
+    def __init__(self, content: str, empties: int) -> None:
+        self.content = content
+        self.empties = empties
+        self.calls = 0
+
+    async def astream(self, messages, config=None):  # noqa: ANN001
+        self.calls += 1
+        yield AIMessageChunk(content="" if self.calls <= self.empties else self.content)
+
+
+async def test_text_json_retries_on_empty_content():
+    """kimi 偶发空 content → 解析级重试，下次拿到有效 JSON 即成功。"""
+    model = _FlakyModel('{"name":"z","score":9}', empties=2)
+    out = await structured_invoke(model, [HumanMessage(content="x")], _Out, method="text_json")
+    assert out.name == "z" and out.score == 9
+    assert model.calls == 3  # 两次空 + 第三次成功
+
+
+async def test_text_json_raises_after_persistent_empty():
+    """恒空 → 重试耗尽后抛错（不静默吞掉）。"""
+    import pytest
+
+    model = _FakeModel("")  # 恒空
+    with pytest.raises(Exception):
+        await structured_invoke(model, [HumanMessage(content="x")], _Out, method="text_json")
+
+
 async def test_text_json_parses_clean_output():
     model = _FakeModel('{"name":"a","score":3}')
     out = await structured_invoke(model, [HumanMessage(content="x")], _Out, method="text_json")

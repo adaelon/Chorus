@@ -49,8 +49,17 @@ async def _via_text_json(
             f"{json.dumps(schema.model_json_schema(), ensure_ascii=False)}"
         )
     )
-    resp = await robust_ainvoke(model, [directive, *messages], attempts=attempts)
-    return schema.model_validate(_extract_json_obj(str(resp.content)))
+    msgs = [directive, *messages]
+    # 解析级重试：kimi 等推理模型偶发只出 reasoning、content 为空（或非 JSON）→ 重新生成。
+    # robust_ainvoke 内部已对连接/超时重试；这里多一层对“空/不可解析”重试。
+    last_err: Exception | None = None
+    for _ in range(max(1, attempts)):
+        resp = await robust_ainvoke(model, msgs)
+        try:
+            return schema.model_validate(_extract_json_obj(str(resp.content or "")))
+        except Exception as e:  # noqa: BLE001  空 content / 无 JSON / schema 不符
+            last_err = e
+    raise last_err  # type: ignore[misc]
 
 
 def _default_method() -> StructuredMethod:

@@ -344,9 +344,21 @@ def create_app(
                 human_in_loop=True,
             )
             # S4.4：telegram 驱动器——入站起圆桌、后台多轮、出站经桥推回群。
+            # relay 专用图：clarify 关闭（群里自动模式无人答澄清，且少一个会空的结构化调用）。
+            relay_graph = build_roundtable_recipe(
+                saver,
+                assign=assign,
+                generate=generate,
+                persona_provider=pp,
+                extract=extract,
+                pick=pick,
+                clarify_assess=None,
+                compose=compose,
+                human_in_loop=True,
+            )
             outbound = OutboundClient(bridge_url, bot_ref_provider_from(sf))
             app.state.relay_driver = RelayDriver(
-                app.state.roundtable_graph, outbound, roster_provider_from(sf)
+                relay_graph, outbound, roster_provider_from(sf)
             )
 
         try:
