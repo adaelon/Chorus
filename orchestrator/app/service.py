@@ -72,6 +72,18 @@ class RoundtableReq(BaseModel):
     max_turns_per_human: int | None = None  # 预算闸（默认用 GroupState 缺省）
 
 
+class RoundtableResumeReq(BaseModel):
+    """续场 resume：按当前暂停点选字段——human_gate 用 interject；clarify 用 answer/skip。"""
+
+    interject: str | None = None  # human_gate：插话文本；None=不插话继续讨论
+    answer: str | None = None  # clarify：答复澄清问
+    skip: bool = False  # clarify：跳过澄清
+
+
+class InterjectReq(BaseModel):
+    text: str  # 异步插话：写入 pending_human，下次 human_gate 消化
+
+
 class ContactIn(BaseModel):
     id: str
     name: str
@@ -436,6 +448,35 @@ def create_app(
         return _sse_from_astream(
             graph, state_in, _cfg(req.group_key), _to_roundtable_event
         )
+
+    @app.post("/roundtable/{key}/resume/stream")
+    async def roundtable_resume_stream(key: str, req: RoundtableResumeReq, request: Request):
+        """续一场暂停的圆桌：按字段转 Command(resume=...)，SSE 出后续轮次到下一暂停点。
+
+        resume 必须**非空**（LangGraph 把 falsy resume 当未恢复会重触发 interrupt）：
+        clarify→{"skip":True}|{"answer":text}；human_gate→{"interject":text|null}（含 key 非空）。
+        """
+        graph = request.app.state.roundtable_graph
+        cfg = _cfg(key)
+        await _require_thread(graph, key)
+        if req.skip:
+            resume: dict = {"skip": True}
+        elif req.answer is not None:
+            resume = {"answer": req.answer}
+        else:
+            resume = {"interject": req.interject}  # 文本或 None（继续讨论）
+        return _sse_from_astream(graph, Command(resume=resume), cfg, _to_roundtable_event)
+
+    @app.post("/roundtable/{key}/interject")
+    async def roundtable_interject(key: str, req: InterjectReq, request: Request):
+        """异步插话通道：外部写 pending_human；下次 human_gate resume 时消化（改向）。"""
+        graph = request.app.state.roundtable_graph
+        await _require_thread(graph, key)
+        await graph.aupdate_state(
+            _cfg(key),
+            {"pending_human": Msg(sender_id="human", sender_kind="human", text=req.text)},
+        )
+        return {"ok": True, "pending": req.text}
 
     @app.post("/synthesize")
     async def synthesize_ep(req: GroupReq, request: Request):
