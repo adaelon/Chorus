@@ -61,6 +61,9 @@ def test_roundtable_start_streams_turn_then_human_gate(tmp_path):
         assert '"contact_id": "A"' in body
         assert '"type": "human_gate"' in body
         assert '"type": "done"' in body
+        # S3.6g 进度反馈：静默段前注入 status（leg 开头 preparing + 框定后 thinking）
+        assert '"stage": "preparing"' in body
+        assert '"stage": "thinking"' in body
 
 
 def _start(client, key, roster=("A", "B")):

@@ -158,6 +158,11 @@ def _inbound_result(result) -> dict:
     return {"type": "candidates", "candidates": candidates}
 
 
+# 圆桌进度反馈（S3.6g）：在静默推理段前注入 status，前端显示进度而非卡死。
+_RT_START_STATUS = {"type": "status", "stage": "preparing"}  # leg 开头（澄清/框定/调度）
+_RT_FOLLOW_STATUS = {"framed": {"type": "status", "stage": "thinking"}}  # 框定后→发言者思考
+
+
 def _to_roundtable_event(mode: str, payload) -> dict | None:
     """把圆桌图 astream 的 (mode,payload) 转 SSE 事件；不关心的返回 None。
 
@@ -204,22 +209,32 @@ def _to_roundtable_event(mode: str, payload) -> dict | None:
     return None
 
 
-def _sse_from_astream(graph, stream_input, cfg, to_event) -> StreamingResponse:
+def _sse_from_astream(
+    graph, stream_input, cfg, to_event, *, start_status=None, follow=None
+) -> StreamingResponse:
     """通用 SSE：跑 graph.astream（updates+messages），经 to_event 转事件 + 心跳保活。
 
     stream_input 可是初始 state（起场）或 `Command(resume=...)`（续场，S3.6d 复用）。
     图在 interrupt（human_gate/clarify）处自然暂停 → 发对应 type 事件后收 done。
+
+    进度反馈（S3.6g）：慢推理模型每步要静默数十秒。`start_status` 在 leg 开头先发一个
+    status 事件；`follow`（事件 type→后续 status）在某事件后补发状态——覆盖"框定后→发言者
+    思考"等静默段，前端据此显示进度而非像卡死。不改节点（status 只在传输层注入）。
     """
     queue: asyncio.Queue = asyncio.Queue()
 
     async def produce():
         try:
+            if start_status:
+                await queue.put(start_status)
             async for mode, payload in graph.astream(
                 stream_input, cfg, stream_mode=["updates", "messages"]
             ):
                 ev = to_event(mode, payload)
                 if ev:
                     await queue.put(ev)
+                    if follow and ev.get("type") in follow:
+                        await queue.put(follow[ev["type"]])
         except Exception as e:  # noqa: BLE001
             await queue.put({"type": "error", "detail": str(e)})
         finally:
@@ -448,7 +463,12 @@ def create_app(
         if req.max_turns_per_human is not None:
             state_in["max_turns_per_human"] = req.max_turns_per_human
         return _sse_from_astream(
-            graph, state_in, _cfg(req.group_key), _to_roundtable_event
+            graph,
+            state_in,
+            _cfg(req.group_key),
+            _to_roundtable_event,
+            start_status=_RT_START_STATUS,
+            follow=_RT_FOLLOW_STATUS,
         )
 
     @app.post("/roundtable/{key}/resume/stream")
@@ -467,7 +487,14 @@ def create_app(
             resume = {"answer": req.answer}
         else:
             resume = {"interject": req.interject}  # 文本或 None（继续讨论）
-        return _sse_from_astream(graph, Command(resume=resume), cfg, _to_roundtable_event)
+        return _sse_from_astream(
+            graph,
+            Command(resume=resume),
+            cfg,
+            _to_roundtable_event,
+            start_status=_RT_START_STATUS,
+            follow=_RT_FOLLOW_STATUS,
+        )
 
     @app.post("/roundtable/{key}/interject")
     async def roundtable_interject(key: str, req: InterjectReq, request: Request):

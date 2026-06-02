@@ -72,6 +72,12 @@
       </div>
     </div>
 
+    <!-- 进度反馈：慢推理模型静默段（分配维度/发言者思考）显示，避免像卡死 -->
+    <div v-if="loading && status" class="status-line mt-3">
+      <v-progress-circular indeterminate size="16" width="2" class="mr-2" />
+      <span class="text-caption">{{ status }}</span>
+    </div>
+
     <!-- 插话窗口：每轮发言后在 human_gate 暂停 -->
     <v-card v-if="paused && pauseType === 'human_gate'" variant="tonal" class="mt-4">
       <v-card-text>
@@ -154,14 +160,24 @@ async function loadContacts() {
 
 onMounted(loadContacts)
 
+// 进度反馈（S3.6g）：慢推理模型每步静默数十秒，status 让 UI 不像卡死。
+const STATUS_LABEL = {
+  preparing: '主持人准备中…',
+  thinking: '发言者思考中…',
+  framing: '分配维度中…',
+}
+
 // SSE 事件 → 气泡。起场与续场共用同一套 handlers。
 const handlers = {
+  status: (e) => {
+    status.value = STATUS_LABEL[e.stage] || '处理中…'
+  },
   framed: (e) => {
-    status.value = ''
     dims.value = Object.fromEntries(e.roster.map((r) => [r.contact_id, r.dimension]))
   },
   delta: (e) => {
     if (!e.contact_id) return // 防御：无归属的 token（非发言）不建气泡
+    status.value = '' // token 开始流 → 清进度提示
     // 逐 token：找/建当前发言者的流式气泡
     if (!current || current.sender_id !== e.contact_id) {
       current = {
@@ -270,6 +286,11 @@ const skipClarify = () =>
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+.status-line {
+  display: flex;
+  align-items: center;
+  opacity: 0.8;
 }
 .bubble-row {
   display: flex;
