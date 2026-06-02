@@ -1,4 +1,4 @@
-"""验证用"假大脑"：收 group_relay 的入站 POST 并打印（看转发的 InboundMsg）。
+r"""验证用"假大脑"：收 group_relay 的入站 POST 并打印（看转发的 InboundMsg）。
 
 跑法（任意 python，无第三方依赖）：
     python data\plugins\group_relay\echo_brain.py            # 默认 8900

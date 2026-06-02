@@ -1,0 +1,14 @@
+{
+  "bridge_port": {
+    "description": "出站桥监听端口（127.0.0.1）",
+    "type": "int",
+    "default": 9876,
+    "hint": "编排服务 POST {该端口}/outbound 让指定 bot 发言"
+  },
+  "brain_url": {
+    "description": "编排服务(大脑)地址",
+    "type": "string",
+    "default": "http://127.0.0.1:8900",
+    "hint": "入站群消息规范化后转发到 {brain_url}/inbound；联调可指向 echo_brain 的端口"
+  }
+}
