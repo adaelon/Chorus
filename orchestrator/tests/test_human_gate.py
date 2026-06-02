@@ -104,6 +104,19 @@ async def test_pending_human_async_injection_consumed():
     assert snap.values["turns_since_human"] == 1  # 改向重置后又一轮
 
 
+async def test_end_routes_to_synthesize():
+    """S3.6h：human_gate resume {"end": true} → 直接主笔综合到 END（不靠预算闸/主持人）。"""
+    graph = _graph()
+    cfg = _cfg("h5")
+    await graph.ainvoke(_state_in("h5"), cfg)  # A 发言后停在 human_gate（turns=1，远未到预算闸 5）
+
+    out = await graph.ainvoke(Command(resume={"end": True}), cfg)
+    # 跑到 END（非再次 interrupt），主笔综合产出非空（点账本有 A 的点）
+    assert "__interrupt__" not in out
+    assert out["output"]
+    assert out["turns_since_human"] == 1  # 未到预算闸，是手动收尾
+
+
 async def test_no_interject_continues_discussion():
     graph = _graph()
     cfg = _cfg("h4")

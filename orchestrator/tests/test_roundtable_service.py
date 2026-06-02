@@ -110,6 +110,17 @@ def test_interject_endpoint_injects_and_is_consumed(tmp_path):
         assert '"contact_id": "A"' in body  # pending 被消化 → 预算归零 → 重启回 A
 
 
+def test_resume_end_synthesizes(tmp_path):
+    """S3.6h：resume {"end": true} → 主笔综合，SSE 出 output（手动收尾）。"""
+    with TestClient(_app(tmp_path)) as client:
+        _start(client, "d5")  # A 发言后停在 human_gate
+        r = client.post("/roundtable/d5/resume/stream", json={"end": True})
+        assert r.status_code == 200
+        body = r.text
+        assert '"type": "output"' in body
+        assert '"type": "human_gate"' not in body  # 收尾了，不再让位
+
+
 def test_resume_before_start_returns_404(tmp_path):
     with TestClient(_app(tmp_path)) as client:
         r = client.post("/roundtable/never/resume/stream", json={"interject": None})

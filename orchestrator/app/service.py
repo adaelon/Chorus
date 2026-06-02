@@ -78,6 +78,7 @@ class RoundtableResumeReq(BaseModel):
     interject: str | None = None  # human_gate：插话文本；None=不插话继续讨论
     answer: str | None = None  # clarify：答复澄清问
     skip: bool = False  # clarify：跳过澄清
+    end: bool = False  # human_gate：手动结束并主笔综合（S3.6h）
 
 
 class InterjectReq(BaseModel):
@@ -485,6 +486,8 @@ def create_app(
             resume: dict = {"skip": True}
         elif req.answer is not None:
             resume = {"answer": req.answer}
+        elif req.end:
+            resume = {"end": True}  # 手动收尾 → human_gate 直接转 synthesize
         else:
             resume = {"interject": req.interject}  # 文本或 None（继续讨论）
         return _sse_from_astream(

@@ -97,6 +97,9 @@
           <v-btn size="small" variant="text" class="ml-2" :loading="loading" @click="continueDiscussion">
             继续
           </v-btn>
+          <v-btn size="small" color="success" variant="text" class="ml-2" :loading="loading" @click="endRoundtable">
+            结束并总结
+          </v-btn>
         </div>
       </v-card-text>
     </v-card>
@@ -260,6 +263,10 @@ async function start() {
 
 const continueDiscussion = () =>
   runLeg(() => roundtableResume(groupKey.value, { interject: null }, handlers))
+
+// 手动收尾（S3.6h）：不靠预算闸/主持人判停，直接主笔综合。
+const endRoundtable = () =>
+  runLeg(() => roundtableResume(groupKey.value, { end: true }, handlers))
 
 async function interjectAndResume() {
   if (!interjectText.value) return

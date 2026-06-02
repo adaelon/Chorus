@@ -69,7 +69,8 @@ def build_roundtable_recipe(
     g.add_edge("frame", "schedule")
 
     if human_in_loop:
-        g.add_node("human_gate", human_gate, destinations=("schedule",))
+        # destinations 含 synthesize：S3.6h 人手动"结束并总结"时 human_gate 直接收尾。
+        g.add_node("human_gate", human_gate, destinations=("schedule", "synthesize"))
         g.add_edge("turn", "human_gate")  # 每轮发言后过打断窗口
         yield_target = "human_gate"
     else:
