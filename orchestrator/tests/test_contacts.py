@@ -43,6 +43,24 @@ def test_contact_crud(tmp_path):
         assert client.delete("/contacts/laochen").status_code == 404  # 已删
 
 
+def test_contact_bot_ref_crud(tmp_path):
+    """S4.3：Contact 可设/改 bot_ref（出站选 bot 用），持久且可读回。"""
+    with TestClient(_app(tmp_path)) as client:
+        client.post(
+            "/contacts",
+            json={"id": "chen", "name": "老陈", "bot_ref": "telegram_chen"},
+        )
+        c = next(x for x in client.get("/contacts").json() if x["id"] == "chen")
+        assert c["bot_ref"] == "telegram_chen"
+        # 改绑
+        client.put(
+            "/contacts/chen",
+            json={"id": "chen", "name": "老陈", "bot_ref": "telegram_chen2"},
+        )
+        c = next(x for x in client.get("/contacts").json() if x["id"] == "chen")
+        assert c["bot_ref"] == "telegram_chen2"
+
+
 def test_live_eliminate_writes_reputation(tmp_path):
     with TestClient(_app(tmp_path)) as client:
         client.post("/contacts", json={"id": "A", "name": "老陈"})

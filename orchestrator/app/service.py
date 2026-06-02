@@ -91,6 +91,7 @@ class ContactIn(BaseModel):
     title: str = ""
     persona_style: str = ""
     base_stance: str = ""
+    bot_ref: str = ""  # AstrBot platform 实例 id（出站以该 bot 身份发言，S4.3）
 
 
 def _cfg(group_key: str) -> dict:

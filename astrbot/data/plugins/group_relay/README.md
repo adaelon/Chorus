@@ -1,6 +1,15 @@
 # group_relay — Chorus ↔ AstrBot 窄消息桥
 
-只搬字节，不含业务智能（LLM/人设/调度/记忆全在编排服务）。已实现 **S4.1 出站 + S4.2 入站**。
+只搬字节，不含业务智能（LLM/人设/调度/记忆全在编排服务）。已实现 **S4.1 出站 + S4.2 入站 + S4.3 多 bot 映射**。
+
+## 多 bot 配置（S4.3，手动）
+
+1. **BotFather**：为每个 AI 身份建一个 telegram bot，拿各自 token；对每个 bot 发
+   `/setprivacy` → **Disable**（关 privacy mode，否则 bot 收不到群里其他人的消息）。
+2. **AstrBot**：在 WebUI/`data/cmd_config.json` 的 `platform` 列表里加 N 个 telegram 实例
+   （各填 token），每个实例有唯一 **id**（即 `bot_id`）。N 个实例都应 RUNNING。
+3. **映射**：在好友页给每个 Contact 填 `bot_ref` = 对应 telegram 实例 id。大脑出站时
+   据 `contact.bot_ref` 把"该 contact 发言"路由到对应 bot（`OutboundClient`，orchestrator 侧）。
 
 ## 位置与运行
 
@@ -55,6 +64,10 @@ InboundMsg → POST `{brain_url}/inbound`（`brain_url` 可在插件配置改，
   ```
   cd E:\allwork\download\agent\Chorus\astrbot
   E:\AnacondaEnvs\astrbot_env\python.exe data\plugins\group_relay\smoke_inbound.py
+  ```
+- **出站精确路由 smoke**（真实 astrbot + 两个假 platform，验 bot_id 只命中对应实例，无需 telegram）：
+  ```
+  E:\AnacondaEnvs\astrbot_env\python.exe data\plugins\group_relay\smoke_outbound.py
   ```
 - **全链路**（真实 telegram 群消息→大脑、出站 curl→bot 发言、无自动回复）：需先配 telegram bot（S4.3），见上文判据。
 

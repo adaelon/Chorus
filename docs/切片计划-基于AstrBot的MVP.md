@@ -171,10 +171,11 @@
 - 判据：`pytest`(插件逻辑) — 同一 msg_id 两次只转发一次；发消息后 AstrBot 自身 LLM **不**回复（手动确认）。
 - 落地：`inbound.py`（Dedup/decide/make_inbound_msg 纯逻辑）+ `main.py:on_group_message` 钩子；离线 12 测（含去重）+ 真实 astrbot 导入校验；无自动回复手动验。大脑侧 InboundMsg 适配留 S4.4。详见代码链路。
 
-**S4.3 Telegram 多 bot 配置 + 映射**
+**S4.3 Telegram 多 bot 配置 + 映射 ✅**
 - 做：AstrBot config 配 N 个 telegram platform 实例（各 token）；`Contact.bot_ref` ↔ 实例 id 映射；关 privacy mode。
 - 不做：端到端联调（S4.4）。
 - 判据：N 个 bot 都 RUNNING；大脑发 `/outbound` 能精确路由到对应 bot（手动确认）。
+- 落地：`ContactIn.bot_ref` + `bot_ref_provider_from` + `OutboundClient`(contact→bot_ref→POST 桥) + ContactsPage bot_ref 字段；orchestrator 87 测 + 出站精确路由 smoke PASS（真 astrbot 两假 platform）。真 token/关 privacy 手动（README）。详见代码链路。
 
 **S4.4 端到端联调**
 - 做：把大脑产出经桥推进 Telegram 群；人在群里发问/插话经桥回大脑。

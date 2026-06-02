@@ -18,6 +18,20 @@ def persona_provider_from(session_factory):
     return provider
 
 
+def bot_ref_provider_from(session_factory):
+    """用会话工厂造一个 bot_ref_provider：contact_id -> AstrBot platform 实例 id | None（S4.3）。
+
+    出站时据此把"某 contact 发言"路由到对应 bot 实例；未绑定（空）则返回 None。
+    """
+
+    async def provider(contact_id: str) -> str | None:
+        async with session_factory() as s:
+            c = await s.get(Contact, contact_id)
+            return c.bot_ref if (c and c.bot_ref) else None
+
+    return provider
+
+
 def reputation_adjuster_from(session_factory):
     """用会话工厂造一个 reputation_adjuster：(contact_id, delta) 软加权。
 

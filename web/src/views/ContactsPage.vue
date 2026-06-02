@@ -13,6 +13,11 @@
         <v-text-field v-model="form.title" label="头衔" variant="outlined" />
         <v-text-field v-model="form.persona_style" label="说话风格" variant="outlined" />
         <v-text-field v-model="form.base_stance" label="底层立场" variant="outlined" />
+        <v-text-field
+          v-model="form.bot_ref"
+          label="bot_ref（AstrBot platform 实例 id，出站以该 bot 发言）"
+          variant="outlined"
+        />
         <v-btn color="primary" :loading="loading" :disabled="!form.id || !form.name" @click="save">
           {{ editing ? '保存' : '新建' }}
         </v-btn>
@@ -26,7 +31,7 @@
         v-for="c in contacts"
         :key="c.id"
         :title="`${c.name}（${c.id}）`"
-        :subtitle="`${c.title || '—'} · 风格:${c.persona_style || '—'} · 立场:${c.base_stance || '—'} · 信誉:${c.reputation}`"
+        :subtitle="`${c.title || '—'} · 风格:${c.persona_style || '—'} · 立场:${c.base_stance || '—'} · bot:${c.bot_ref || '—'} · 信誉:${c.reputation}`"
       >
         <template #append>
           <v-btn size="small" variant="text" @click="edit(c)">编辑</v-btn>
@@ -46,7 +51,7 @@ const loading = ref(false)
 const error = ref('')
 const editing = ref(false)
 
-const blank = () => ({ id: '', name: '', title: '', persona_style: '', base_stance: '' })
+const blank = () => ({ id: '', name: '', title: '', persona_style: '', base_stance: '', bot_ref: '' })
 const form = ref(blank())
 
 function resetForm() {
@@ -82,7 +87,7 @@ async function save() {
 }
 
 function edit(c) {
-  form.value = { id: c.id, name: c.name, title: c.title, persona_style: c.persona_style, base_stance: c.base_stance }
+  form.value = { id: c.id, name: c.name, title: c.title, persona_style: c.persona_style, base_stance: c.base_stance, bot_ref: c.bot_ref || '' }
   editing.value = true
 }
 
