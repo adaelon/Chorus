@@ -28,7 +28,7 @@ from .nodes.frame import AssignFn, frame
 from .nodes.generate import GenerateFn, PersonaProvider
 from .nodes.human import human_gate
 from .nodes.schedule import PickFn, schedule
-from .nodes.synthesize import synthesize
+from .nodes.synthesize import ComposeFn, synthesize_roundtable
 from .nodes.turn import turn
 from .state import GroupState
 
@@ -47,6 +47,7 @@ def build_roundtable_recipe(
     extract: ClaimExtractor | None = None,
     pick: PickFn | None = None,
     clarify_assess: ClarifyFn | None = None,
+    compose: ComposeFn | None = None,
     human_in_loop: bool = False,
 ):
     """圆桌配方整图：CLARIFY→FRAME→(SCHEDULE⇄TURN)*→SYNTHESIZE。节点依赖可注入以离线测试。
@@ -62,7 +63,7 @@ def build_roundtable_recipe(
         "turn",
         partial(turn, generate=generate, persona_provider=persona_provider, extract=extract),
     )
-    g.add_node("synthesize", synthesize)
+    g.add_node("synthesize", partial(synthesize_roundtable, compose=compose))
     g.add_edge(START, "clarify")
     g.add_edge("clarify", "frame")
     g.add_edge("frame", "schedule")

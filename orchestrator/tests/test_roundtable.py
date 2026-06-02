@@ -81,6 +81,10 @@ async def test_roundtable_runs_to_end_until_budget():
     # FRAME 给 roster 分了维度
     assert all(s.dimension for s in out["roster"])
 
+    # SYNTHESIZE 圆桌变体（S3.6b）：从点账本主笔综合，不再是空串（补 S3.3 遗留）
+    assert out["output"]
+    assert all(sid in out["output"] for sid in ("A", "B", "C"))
+
 
 async def test_roundtable_frame_runs_before_speaking():
     """第一个发言者看得到自己被分配的维度（FRAME 先于 TURN）。"""
