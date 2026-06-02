@@ -6,7 +6,7 @@ from app.nodes.curate import Eliminate, Pick, Reassign, curate
 from app.state import AgentSlot, Candidate, GroupState, Msg
 
 
-async def _fake_gen(slot: AgentSlot, request: str, history) -> Candidate:
+async def _fake_gen(slot: AgentSlot, request: str, history, claims=None) -> Candidate:
     # 回显 request（含被 reassign 注入的 point），便于断言
     return Candidate(contact_id=slot.contact_id, dimension=slot.dimension, text=f"[{slot.contact_id}] {request}")
 

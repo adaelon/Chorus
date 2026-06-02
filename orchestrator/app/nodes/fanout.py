@@ -30,6 +30,6 @@ async def fanout(
     gen = generate or default_generator(model or make_chat_model(), persona_provider)
     request = request_text(state)
     candidates = await asyncio.gather(
-        *(gen(slot, request, state.history) for slot in state.roster)
+        *(gen(slot, request, state.history, state.claims) for slot in state.roster)
     )
     return {"candidates": list(candidates)}

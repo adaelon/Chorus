@@ -9,7 +9,7 @@ from app.state import AgentSlot, Candidate, GroupState, Msg
 
 
 def _make_capturing_gen(seen: list[list[Msg]]):
-    async def gen(slot: AgentSlot, request: str, history: list[Msg]) -> Candidate:
+    async def gen(slot: AgentSlot, request: str, history: list[Msg], claims=None) -> Candidate:
         seen.append(list(history))  # 记录本次发言看到的上文
         return Candidate(
             contact_id=slot.contact_id,

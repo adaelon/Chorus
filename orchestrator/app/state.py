@@ -34,6 +34,14 @@ class Candidate(BaseModel):
     text: str
 
 
+class Claim(BaseModel):
+    """点账本里的一条"点"：带归属的一句话主张（圆桌记忆压缩单位，§6.11）。"""
+
+    speaker_id: str  # 谁主张的（归属——圆桌交锋的坐标）
+    text: str  # 一句话的坚实主张
+    turn: int = 0  # 第几轮产生（排序/衰减用）
+
+
 class GroupState(BaseModel):
     """LangGraph 图的共享状态。配方(recipe)在其上演化。"""
 
@@ -42,6 +50,7 @@ class GroupState(BaseModel):
     history: list[Msg] = Field(default_factory=list)
     candidates: list[Candidate] = Field(default_factory=list)
     picked: list[Candidate] = Field(default_factory=list)  # 人工策展选中的点/候选
+    claims: list[Claim] = Field(default_factory=list)  # 点账本（圆桌远场记忆，§6.11）
     output: str | None = None  # SYNTHESIZE 汇成的最终产出
     turns_since_human: int = 0
     max_turns_per_human: int = 6

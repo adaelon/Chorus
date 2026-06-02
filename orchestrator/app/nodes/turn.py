@@ -44,7 +44,7 @@ async def turn(
         return {}
     gen = generate or default_generator(model or make_chat_model(), persona_provider)
     request = request_text(state)
-    cand = await gen(slot, request, state.history)
+    cand = await gen(slot, request, state.history, state.claims)
     msg = Msg(
         sender_id=slot.contact_id,
         sender_kind="ai",

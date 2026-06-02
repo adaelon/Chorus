@@ -11,22 +11,33 @@ from collections.abc import Awaitable, Callable
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
+from ..context import ContextProjector, default_context_projector
 from ..llm import robust_ainvoke
-from ..state import AgentSlot, Candidate, Msg
+from ..state import AgentSlot, Candidate, Claim, Msg
 
-# 生成单份候选：(slot, request, history) -> Candidate。可注入以便测试不碰真实 LLM。
-GenerateFn = Callable[[AgentSlot, str, list[Msg]], Awaitable[Candidate]]
+# 生成单份候选：(slot, request, history, claims) -> Candidate。可注入以便测试不碰真实 LLM。
+# claims 为可选第 4 参（圆桌点账本，§6.11）；扇出场景常为空。
+GenerateFn = Callable[..., Awaitable[Candidate]]
 # 按 contact_id 取 persona（鸭子类型：需有 name/title/persona_style/base_stance）。
 PersonaProvider = Callable[[str], Awaitable[object | None]]
 
-_HISTORY_TAIL = 10
 
-
-def placeholder_messages(slot: AgentSlot, request: str) -> list[BaseMessage]:
-    """无 persona 时的占位 prompt（S1.3 行为）。"""
+def placeholder_messages(
+    slot: AgentSlot,
+    request: str,
+    history: list[Msg] | None = None,
+    claims: list[Claim] | None = None,
+    *,
+    projector: ContextProjector = default_context_projector,
+) -> list[BaseMessage]:
+    """无 persona 时的占位 prompt。S3.1b 起也经投影器看上下文（不再"失忆"）。"""
     system = f"You are participant {slot.contact_id}."
-    user = f"{request}\n\n你负责的角度：{slot.dimension}" if slot.dimension else request
-    return [SystemMessage(content=system), HumanMessage(content=user)]
+    if slot.dimension:
+        system += f"\n你负责的角度：{slot.dimension}"
+    msgs: list[BaseMessage] = [SystemMessage(content=system)]
+    msgs += projector(history or [], claims or [])
+    msgs.append(HumanMessage(content=request))
+    return msgs
 
 
 def persona_messages(
@@ -34,8 +45,11 @@ def persona_messages(
     dimension: str | None,
     history: list[Msg],
     request: str,
+    claims: list[Claim] | None = None,
+    *,
+    projector: ContextProjector = default_context_projector,
 ) -> list[BaseMessage]:
-    """混合身份 prompt：基础人设 + 本场维度 + 群历史 + 当前需求（§4）。"""
+    """混合身份 prompt：基础人设 + 本场维度 + 投影上下文(远场点+近场原文) + 当前需求（§4/§6.11）。"""
     bio = f"你是{getattr(persona, 'name', '')}"
     if getattr(persona, "title", ""):
         bio += f"，{persona.title}"
@@ -48,10 +62,7 @@ def persona_messages(
         system += f"\n本场你负责的维度：{dimension}"
 
     msgs: list[BaseMessage] = [SystemMessage(content=system)]
-    recent = (history or [])[-_HISTORY_TAIL:]
-    if recent:
-        joined = "\n".join(f"{m.sender_id}（{m.sender_kind}）：{m.text}" for m in recent)
-        msgs.append(SystemMessage(content=f"群历史：\n{joined}"))
+    msgs += projector(history or [], claims or [])
     msgs.append(HumanMessage(content=request))
     return msgs
 
@@ -59,13 +70,20 @@ def persona_messages(
 def default_generator(
     model: ChatOpenAI,
     persona_provider: PersonaProvider | None = None,
+    *,
+    projector: ContextProjector = default_context_projector,
 ) -> GenerateFn:
-    async def generate(slot: AgentSlot, request: str, history: list[Msg]) -> Candidate:
+    async def generate(
+        slot: AgentSlot,
+        request: str,
+        history: list[Msg],
+        claims: list[Claim] | None = None,
+    ) -> Candidate:
         persona = await persona_provider(slot.contact_id) if persona_provider else None
         msgs = (
-            persona_messages(persona, slot.dimension, history, request)
+            persona_messages(persona, slot.dimension, history, request, claims, projector=projector)
             if persona is not None
-            else placeholder_messages(slot, request)
+            else placeholder_messages(slot, request, history, claims, projector=projector)
         )
         # 打 contact_id tag/metadata，供 LangGraph messages 流把 token 路由到对应候选卡。
         config = {

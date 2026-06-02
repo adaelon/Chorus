@@ -9,7 +9,7 @@ from app.nodes.curate import Eliminate, Pick, curate
 from app.state import AgentSlot, Candidate, GroupState, Msg
 
 
-async def _fake_gen(slot, request, history):
+async def _fake_gen(slot, request, history, claims=None):
     return Candidate(contact_id=slot.contact_id, dimension=slot.dimension, text="x")
 
 

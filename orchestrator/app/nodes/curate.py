@@ -107,7 +107,7 @@ async def curate(
                 contact_id=cmd.executor_id
             )
             augmented = f"{request}\n\n请基于以下要点来写：{cmd.point}"
-            candidates.append(await gen(slot, augmented, state.history))
+            candidates.append(await gen(slot, augmented, state.history, state.claims))
 
     return {"candidates": candidates, "picked": picked}
 
