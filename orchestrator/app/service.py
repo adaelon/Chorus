@@ -30,6 +30,7 @@ from sqlmodel import select
 from .db.engine import init_models, make_engine, make_session_factory
 from .db.models import Contact
 from .db.repo import persona_provider_from, reputation_adjuster_from
+from .nodes.clarify import ClarifyFn
 from .nodes.curate import Eliminate, Pick, Reassign, ReputationAdjuster
 from .nodes.frame import AssignFn
 from .nodes.generate import GenerateFn, PersonaProvider
@@ -52,6 +53,12 @@ class CurateReq(BaseModel):
 
 class GroupReq(BaseModel):
     group_key: str
+
+
+class ClarifyReq(BaseModel):
+    group_key: str
+    answer: str | None = None  # 答复澄清问（并入 history 后进 FRAME）
+    skip: bool = False  # 跳过澄清，强制进 FRAME
 
 
 class ContactIn(BaseModel):
@@ -104,11 +111,28 @@ def _to_event(mode: str, payload) -> dict | None:
 
 
 def _interrupt_value(result) -> dict | None:
-    """从 ainvoke 结果取 interrupt payload（图暂停在 curate）；未暂停返回 None。"""
+    """从 ainvoke 结果取 interrupt payload（图暂停在 curate/clarify）；未暂停返回 None。"""
     intr = result.get("__interrupt__") if isinstance(result, dict) else None
     if intr:
         return intr[0].value
     return None
+
+
+def _inbound_result(result) -> dict:
+    """按 interrupt payload 的 type 分流扇出响应：clarify（待答澄清）vs candidates（候选）。
+
+    clarify live wire 后，图可能先停在 clarify interrupt（信心不足）；前端据 type 渲染
+    澄清问气泡或候选卡。answer/skip 经 /clarify resume 后图续跑到 curate → 走 candidates 支。
+    """
+    payload = _interrupt_value(result)
+    if payload and payload.get("type") == "clarify":
+        return {
+            "type": "clarify",
+            "restate": payload.get("restate", ""),
+            "question": payload.get("question", ""),
+        }
+    candidates = payload["candidates"] if payload else result.get("candidates", [])
+    return {"type": "candidates", "candidates": candidates}
 
 
 async def _require_thread(graph, group_key: str) -> None:
@@ -128,6 +152,7 @@ def create_app(
     generate: GenerateFn | None = None,
     persona_provider: PersonaProvider | None = None,
     reputation_adjuster: ReputationAdjuster | None = None,
+    clarify_assess: ClarifyFn | None = None,
     db_path: str = "group_checkpoints.sqlite",
     registry_db_path: str = "chorus_registry.sqlite",
 ) -> FastAPI:
@@ -150,6 +175,7 @@ def create_app(
                     generate=generate,
                     persona_provider=pp,
                     reputation_adjuster=ra,
+                    clarify_assess=clarify_assess,
                 )
                 yield
             else:
@@ -160,6 +186,7 @@ def create_app(
                         generate=generate,
                         persona_provider=pp,
                         reputation_adjuster=ra,
+                        clarify_assess=clarify_assess,
                     )
                     yield
         finally:
@@ -188,11 +215,23 @@ def create_app(
                 sender_id="human", sender_kind="human", text=req.request
             ),
         }
-        # 跑到 CURATE 的 interrupt 暂停，候选从 interrupt payload 取。
+        # 跑到 CLARIFY（信心不足）或 CURATE 的 interrupt 暂停；按 type 分流响应。
         result = await graph.ainvoke(state_in, _cfg(req.group_key))
-        payload = _interrupt_value(result)
-        candidates = payload["candidates"] if payload else result.get("candidates", [])
-        return {"candidates": candidates}
+        return _inbound_result(result)
+
+    @app.post("/clarify")
+    async def clarify_ep(req: ClarifyReq, request: Request):
+        """resume 停在 clarify interrupt 的图：答复并入 history / 跳过，均续跑到 curate。
+
+        resume 必须非空（LangGraph 把 falsy resume 当未恢复会重触发 interrupt）：
+        skip→{"skip": True}；否则→{"answer": text}。
+        """
+        graph = request.app.state.graph
+        cfg = _cfg(req.group_key)
+        await _require_thread(graph, req.group_key)
+        resume = {"skip": True} if req.skip else {"answer": req.answer or ""}
+        result = await graph.ainvoke(Command(resume=resume), cfg)
+        return _inbound_result(result)
 
     @app.post("/curate")
     async def curate_ep(req: CurateReq, request: Request):
