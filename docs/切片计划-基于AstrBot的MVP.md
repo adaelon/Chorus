@@ -139,7 +139,7 @@
 - 不做：阈值自适应（Phase 2）。
 - 判据：`pytest` — 模糊需求触发澄清问、清晰需求直通；"跳过"强制进 FRAME。
 
-**S3.6 群视图 + 圆桌 live wire（含 S3.1c/S3.4/S3.5 遗留收口）**
+**S3.6 群视图 + 圆桌 live wire（含 S3.1c/S3.4/S3.5 遗留收口）✅**（拆 a-e 五刀：a CLARIFY live wire / b 圆桌 SYNTHESIZE 变体 / c 圆桌图上挂+SSE 起场 / d 续场+插话 / e ChatPage 群视图；详见代码链路）
 - 做（后端 wire，先于前端）：
   1. **圆桌 service 端点**：`POST /roundtable`（起一场，初始 request 进 history、pending_human=None）+ `POST /roundtable/{key}/resume`（续：`{interject: text|null}` 转 `Command(resume=...)`，注意**非空** payload 约束）+ 插话异步注入（`aupdate_state` 写 pending_human）。`build_roundtable_recipe(..., human_in_loop=True)`，wire `human_gate`。
   2. **CLARIFY live wire（S3.5 遗留）**：把 `default_clarifier` 接进 service；`/inbound`、`/roundtable` 的 interrupt 处理改为**按 `payload["type"]` 分流**（`clarify` vs `curate` vs `human_gate`），前端据 type 渲染（澄清问 / 候选 / 插话窗口）。SSE 同样按 type 出事件。
