@@ -109,6 +109,16 @@
 - 不做：调度决策（S3.2）、并行。
 - 判据：`pytest` — 连续两次 TURN，第二次 prompt 含第一次发言（上文可见性）。
 
+**S3.1b 点账本基座 + context 投影器（§6.11）**
+- 做：`Claim{speaker_id,text,turn}` 模型 + `GroupState.claims`；把 `generate.py` 写死的 `history[-10:]` 抽成可插拔 `build_context(history, claims)->messages`，默认实现 = 远场全部 claims（带归属）+ 近场最近 K 轮原文（K 可配）。`claims` 为空时退化为纯原文窗口（行为兼容现状）。
+- 不做：提点（S3.1c）；点的状态/对立关系。
+- 判据：`pytest` — 投影器单测：给 history+claims，远场只出点、近场出原文；claims 空时等价原文窗口。原 fanout/turn 测试仍绿。
+
+**S3.1c 提点原语 + TURN 集成（§6.11）**
+- 做：中立 claim extractor（`structured_invoke` text_json 提 1-3 个点，§6.9）；TURN 发言后对该文本提点、追加进 `state.claims`。
+- 不做：发言时一并产出（破坏 SSE）；提取质量调优。
+- 判据：`pytest` — 两轮 TURN 后 `claims` 含两人归属；第三轮发言 prompt 里**远场只见点、不见第一轮原文全文**（注入假 extractor，离线）。
+
 **S3.2 SCHEDULE 节点**
 - 做：`decide_next`(§3.2)——`pending_human` 优先 → 预算闸 → `moderator_llm_pick`，返回 `NextSpeaker|YieldToHuman|Stop`。`moderator_llm_pick` **复用 S1.4b 的 `structured_invoke`**（§6.9）。
 - 不做：打断注入（S3.4）。
@@ -177,7 +187,7 @@ S1.1 → S1.2 → {S1.3, S1.4} → S1.5 → S1.6 ──┬─→ S1.7 → S1.8  
                                             │
 S1.6 ─→ S2.0(durable checkpointer) ; S2.1 → S2.2 → S2.3   │   S2.4 需 S2.1 + 后端
 S1.6 ─→ S3.0(interrupt 化扇出, 模型A) ──→ S3.4 复用同一 interrupt 机制
-S2.* ─→ S3.1 → S3.2 → S3.3(验收) → S3.4 → S3.5 ; S3.6/S3.7 需前端基座(S1.7)
+S2.* ─→ S3.1 → S3.1b(点账本+投影器) → S3.1c(中立提点) → S3.2 → S3.3(验收) → S3.4 → S3.5 ; S3.6/S3.7 需前端基座(S1.7)
 S3(引擎) ─→ S4.1 → S4.2 → S4.3 → S4.4 ; S4.5 需 S1.7
 ```
 
