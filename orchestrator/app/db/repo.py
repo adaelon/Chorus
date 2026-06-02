@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+from sqlmodel import select
+
 from .models import Contact
 
 
@@ -14,6 +16,17 @@ def persona_provider_from(session_factory):
     async def provider(contact_id: str):
         async with session_factory() as s:
             return await s.get(Contact, contact_id)
+
+    return provider
+
+
+def roster_provider_from(session_factory):
+    """造一个 roster_provider：() -> 有 bot_ref 的 Contact id 列表（= 群里的 AI 参与者，S4.4）。"""
+
+    async def provider() -> list[str]:
+        async with session_factory() as s:
+            rows = (await s.exec(select(Contact).where(Contact.bot_ref != ""))).all()
+            return [c.id for c in rows]
 
     return provider
 

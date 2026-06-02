@@ -4,8 +4,8 @@
 编排服务）。
 - **出站**（S4.1）：编排服务决定"以 bot X 身份在某群发言"→ POST 本插件自起的 aiohttp 桥
   → 按 bot_id 选 platform 实例 `send_by_session` 发出。
-- **入站**（S4.2）：群消息钩子 → 规范化 InboundMsg → POST 大脑 `/inbound`；按
-  (group_key, native_msg_id) 去重（N bot 同条只转一次）；`stop_event()` 防 AstrBot 自动回复。
+- **入站**（S4.2）：群消息钩子 → 规范化 InboundMsg → POST 大脑 `/relay/inbound`；按
+  内容键（去平台段 session+sender+ts+text）去重（N bot 同条只转一次）；`stop_event()` 防自动回复。
 
 为何自起 aiohttp 而非复用 dashboard：dashboard 的 /api/plug 路由受 JWT 鉴权，服务间
 调用不便；自起一个 127.0.0.1 专用桥端口、无鉴权、与 dashboard 解耦，契合"窄桥"。
@@ -128,5 +128,6 @@ class GroupRelay(Star):
 
     async def _post_inbound(self, msg: dict) -> None:
         assert self._session is not None
-        async with self._session.post(f"{self._brain_url}/inbound", json=msg) as resp:
+        # /relay/inbound：大脑侧 telegram 驱动入口（区别于 web 起场的 /inbound，S4.4）。
+        async with self._session.post(f"{self._brain_url}/relay/inbound", json=msg) as resp:
             await resp.read()

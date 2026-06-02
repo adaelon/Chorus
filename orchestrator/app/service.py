@@ -29,7 +29,12 @@ from sqlmodel import select
 
 from .db.engine import init_models, make_engine, make_session_factory
 from .db.models import Contact
-from .db.repo import persona_provider_from, reputation_adjuster_from
+from .db.repo import (
+    bot_ref_provider_from,
+    persona_provider_from,
+    reputation_adjuster_from,
+    roster_provider_from,
+)
 from .nodes.clarify import ClarifyFn
 from .nodes.curate import Eliminate, Pick, Reassign, ReputationAdjuster
 from .nodes.extract import ClaimExtractor
@@ -37,8 +42,10 @@ from .nodes.frame import AssignFn
 from .nodes.generate import GenerateFn, PersonaProvider
 from .nodes.schedule import PickFn
 from .nodes.synthesize import ComposeFn
+from .outbound_client import OutboundClient
 from .recipes import build_fanout_recipe
 from .recipes_roundtable import build_roundtable_recipe
+from .relay import RelayDriver
 from .state import AgentSlot, Msg
 
 AnyCommand = Annotated[Union[Pick, Eliminate, Reassign], Field(discriminator="kind")]
@@ -83,6 +90,19 @@ class RoundtableResumeReq(BaseModel):
 
 class InterjectReq(BaseModel):
     text: str  # 异步插话：写入 pending_human，下次 human_gate 消化
+
+
+class RelayInboundReq(BaseModel):
+    """group_relay 桥转发的群消息（§2.1 InboundMsg）；只有人类消息触发圆桌。"""
+
+    group_key: str
+    text: str = ""
+    sender_kind: str = "human"
+    platform: str = ""
+    sender_id: str = ""
+    sender_name: str = ""
+    native_msg_id: str = ""
+    ts: float = 0.0
 
 
 class ContactIn(BaseModel):
@@ -285,6 +305,7 @@ def create_app(
     extract: ClaimExtractor | None = None,
     pick: PickFn | None = None,
     compose: ComposeFn | None = None,
+    bridge_url: str = "http://127.0.0.1:9876",
     db_path: str = "group_checkpoints.sqlite",
     registry_db_path: str = "chorus_registry.sqlite",
 ) -> FastAPI:
@@ -321,6 +342,11 @@ def create_app(
                 clarify_assess=clarify_assess,
                 compose=compose,
                 human_in_loop=True,
+            )
+            # S4.4：telegram 驱动器——入站起圆桌、后台多轮、出站经桥推回群。
+            outbound = OutboundClient(bridge_url, bot_ref_provider_from(sf))
+            app.state.relay_driver = RelayDriver(
+                app.state.roundtable_graph, outbound, roster_provider_from(sf)
             )
 
         try:
@@ -499,6 +525,13 @@ def create_app(
             start_status=_RT_START_STATUS,
             follow=_RT_FOLLOW_STATUS,
         )
+
+    @app.post("/relay/inbound")
+    async def relay_inbound(req: RelayInboundReq, request: Request):
+        """group_relay 桥入站：人类群消息 → 起/续圆桌（后台多轮、出站推回群）。"""
+        if req.sender_kind != "human" or not req.text.strip():
+            return {"status": "ignored"}
+        return await request.app.state.relay_driver.handle_inbound(req.group_key, req.text)
 
     @app.post("/roundtable/{key}/interject")
     async def roundtable_interject(key: str, req: InterjectReq, request: Request):

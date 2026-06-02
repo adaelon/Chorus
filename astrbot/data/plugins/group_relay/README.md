@@ -36,13 +36,13 @@ POST http://127.0.0.1:9876/outbound
 ## 入站 API（S4.2）
 
 群消息钩子（`@filter.event_message_type(GROUP_MESSAGE)`，高优先级）规范化每条群消息成
-InboundMsg → POST `{brain_url}/inbound`（`brain_url` 可在插件配置改，默认 :8900）：
+InboundMsg → POST `{brain_url}/relay/inbound`（`brain_url` 可在插件配置改，默认 :8900）：
 
 ```
 { group_key, platform, sender_id, sender_name, sender_kind, text, native_msg_id, ts }
 ```
 
-- **去重**：按 `(group_key, native_msg_id)` 先到先得——多 bot 在同群各收到同一条人类消息，只转一次。
+- **去重**：按**内容键**（去平台段 session + sender_id + ts + text）先到先得——多 bot 在同群各收到同一条人类消息，只转一次。（实测 telegram 给各 bot 的 `message_id` 不一致，故不能按 msg_id 去重。）
 - **截断**：转发后（及重复副本）`event.stop_event()`，阻止 AstrBot 用自己的 provider 自动回复。
 - 自己（本 bot）发的 / 空文本 → 忽略（不转发不截断）；多 bot 间 AI 发言识别留 S4.3。
 - 大脑侧对 InboundMsg 的处理（入会话/路由）= S4.4；当前默认 POST 到 `/inbound`，契约对接随 S4.4 定。
