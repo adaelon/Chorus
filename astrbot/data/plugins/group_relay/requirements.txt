@@ -1,0 +1,2 @@
+# 出站桥用；AstrBot 运行环境通常已含 aiohttp，此处显式声明。
+aiohttp

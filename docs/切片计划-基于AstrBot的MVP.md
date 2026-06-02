@@ -159,10 +159,11 @@
 
 ## S4 AstrBot 桥 + Telegram 多 bot
 
-**S4.1 group_relay 插件骨架 + 出站**
+**S4.1 group_relay 插件骨架 + 出站 ✅**
 - 做：AstrBot 侧 `Star` 插件；暴露 `/outbound`，按 `bot_id` 选 platform 实例 → `send_by_session`（先单 bot 验）。
 - 不做：入站、去重、多 bot。
 - 判据：`curl /outbound` → 指定 bot 在目标会话发出消息（单 bot 手动确认）。
+- 落地：`astrbot/data/plugins/group_relay/`（vendored astrbot，仅插件进 git）；自起 aiohttp 桥 127.0.0.1:9876；出站逻辑离线 6 测 + 真实 astrbot 导入校验通过；curl 单 bot 手动验。详见代码链路。
 
 **S4.2 入站转发 + 去重 + stop_event**
 - 做：群消息钩子 → 规范化 `InboundMsg` → POST 大脑 `/inbound`；按 `(group_key, native_msg_id)` 去重；`stop_event()` 防自动回复。

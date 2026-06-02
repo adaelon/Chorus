@@ -12,3 +12,8 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.db
+
+# Vendored AstrBot 框架（本地运行用，不提交）：整棵忽略——含 data/ 的 cmd_config.json
+# 等运行态/密钥、及第三方框架源。我们的插件 astrbot/data/plugins/group_relay/ 用
+# `git add -f` 强制跟踪（见该目录 README）；新增插件文件时同样需 -f。
+/astrbot/

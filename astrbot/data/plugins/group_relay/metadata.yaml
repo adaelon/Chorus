@@ -1,0 +1,4 @@
+name: group_relay
+desc: Chorus ↔ AstrBot 窄消息桥：出站（按 bot_id 以独立身份发言）。S4.1。
+author: Chorus
+version: 0.1.0
