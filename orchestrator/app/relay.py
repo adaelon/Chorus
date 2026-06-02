@@ -19,6 +19,7 @@ from collections.abc import Awaitable, Callable
 
 from langgraph.types import Command
 
+from .runtime import TurnDone, iter_events
 from .state import AgentSlot, Msg
 
 logger = logging.getLogger("chorus.relay")
@@ -65,7 +66,7 @@ class RelayDriver:
 
     async def _run(self, thread: str, group_key: str, roster: list[str], topic: str) -> None:
         cfg = {"configurable": {"thread_id": thread}}
-        state_in = {
+        stream_input = {
             "group_key": thread,
             "roster": [AgentSlot(contact_id=c) for c in roster],
             "history": [Msg(sender_id="human", sender_kind="human", text=topic)],
@@ -73,15 +74,17 @@ class RelayDriver:
             "max_turns_per_human": self._max_turns,
         }
         try:
-            pushed = 0
-            result = await self._graph.ainvoke(state_in, cfg)
-            pushed = await self._push_new(group_key, cfg, pushed)
-            # 每轮停在 human_gate（或 clarify）→ 自动续轮，直到跑到 END（synthesize）。
-            while isinstance(result, dict) and "__interrupt__" in result:
-                result = await self._graph.ainvoke(
-                    Command(resume=self._next_resume(thread)), cfg
-                )
-                pushed = await self._push_new(group_key, cfg, pushed)
+            # 后台循环：跑一段 astream（到下一个 human_gate）→ 每轮发言经 bot 推群 →
+            # 若图未到 END（snap.next 非空）则 resume 续轮（可带人类插话改向）。
+            while True:
+                async for ev in iter_events(self._graph, stream_input, cfg):
+                    if isinstance(ev, TurnDone):
+                        await self._push_turn(group_key, ev)
+                    # Output(主笔综合) 暂不推群；Delta/Framed/Interrupt telegram 忽略。
+                snap = await self._graph.aget_state(cfg)
+                if not snap.next:  # 跑到 END（synthesize）→ 本场结束
+                    break
+                stream_input = Command(resume=self._next_resume(thread))
         except Exception as e:  # noqa: BLE001
             logger.error(f"relay 讨论 {thread} 异常：{e}")
 
@@ -95,17 +98,12 @@ class RelayDriver:
                 pass
         return {"interject": None}
 
-    async def _push_new(self, group_key: str, cfg: dict, pushed: int) -> int:
-        """把 history 里自上次以来新增的 AI 发言，逐条经对应 bot 推回群。"""
-        snap = await self._graph.aget_state(cfg)
-        history = snap.values.get("history", []) if snap.values else []
-        ai = [m for m in history if m.sender_kind == "ai"]
-        for m in ai[pushed:]:
-            if not (m.text or "").strip():
-                logger.warning(f"relay 跳过空发言（{m.sender_id}）——模型可能只出了 reasoning")
-                continue  # 空文本不推（telegram 拒空消息，且无意义）
-            try:
-                await self._outbound.speak(group_key, m.sender_id, m.text)
-            except Exception as e:  # noqa: BLE001
-                logger.error(f"relay 出站推送失败（{m.sender_id}）：{e}")
-        return len(ai)
+    async def _push_turn(self, group_key: str, ev: TurnDone) -> None:
+        """把一轮发言经对应 bot 推回群（空发言跳过——kimi 可能只出 reasoning）。"""
+        if not (ev.text or "").strip():
+            logger.warning(f"relay 跳过空发言（{ev.contact_id}）——模型可能只出了 reasoning")
+            return
+        try:
+            await self._outbound.speak(group_key, ev.contact_id, ev.text)
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"relay 出站推送失败（{ev.contact_id}）：{e}")

@@ -196,7 +196,7 @@
 > S3.6/S4.4 让 web 与 telegram 各写了一套驱动同一张圆桌图——重复且每加一种适配再抄一份。
 > S5 把驱动收进 transport 无关的运行时，再让主持人按任务组合原语。先地基(S5.0)，后能力(S5.1/5.2)。
 
-**S5.0 transport 无关会话运行时（统一 web/telegram 驱动）**（§6.12，A3 重构）
+**S5.0 transport 无关会话运行时（统一 web/telegram 驱动）✅**（§6.12，A3 重构）
 - 做：抽 `SessionRuntime` + 中性事件（入站 `Start|HumanMsg`；出站 `Turn|Ask|Result|Status|Done`）；把圆桌驱动逻辑收进 runtime（**一份**）；web `/roundtable` SSE 与 telegram `RelayDriver` 改为 runtime 的两个 **adapter**（各做"中性事件 ↔ transport"互转）；`group_key`/`bot_ref` 在 adapter 边界规范化成 `session_id`/`identity_id`。
 - 不做：L2 选配方 / L3 组原语（S5.1/5.2）；改原语或圆桌图拓扑（纯搬运，行为不变）。
 - 判据：`pytest` — runtime 出 OutboundEvent 序列正确（起场→`Turn*`→`Done`；插话→改向）；web/telegram 两 adapter 把**同一** runtime 事件各自映射对（离线假 transport）；**既有 web SSE 与 telegram 行为不变**（A3，原 `test_roundtable_service`/`test_relay` 仍绿或等价迁移）。
