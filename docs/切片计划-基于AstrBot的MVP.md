@@ -139,10 +139,15 @@
 - 不做：阈值自适应（Phase 2）。
 - 判据：`pytest` — 模糊需求触发澄清问、清晰需求直通；"跳过"强制进 FRAME。
 
-**S3.6 ChatPage 改造成群视图**
-- 做：复用 `ChatPage`，加多 AI 身份气泡（按 sender 区分头像/名）+ 人插话输入框，连 `brainApi`。
+**S3.6 群视图 + 圆桌 live wire（含 S3.1c/S3.4/S3.5 遗留收口）**
+- 做（后端 wire，先于前端）：
+  1. **圆桌 service 端点**：`POST /roundtable`（起一场，初始 request 进 history、pending_human=None）+ `POST /roundtable/{key}/resume`（续：`{interject: text|null}` 转 `Command(resume=...)`，注意**非空** payload 约束）+ 插话异步注入（`aupdate_state` 写 pending_human）。`build_roundtable_recipe(..., human_in_loop=True)`，wire `human_gate`。
+  2. **CLARIFY live wire（S3.5 遗留）**：把 `default_clarifier` 接进 service；`/inbound`、`/roundtable` 的 interrupt 处理改为**按 `payload["type"]` 分流**（`clarify` vs `curate` vs `human_gate`），前端据 type 渲染（澄清问 / 候选 / 插话窗口）。SSE 同样按 type 出事件。
+  3. **圆桌 SYNTHESIZE 主笔综合（S3.3 遗留）**：圆桌无 candidates/picked → 现产空串；补一个从 `claims`/`history` 综合的产出（可在 synthesize 加分支或新综合节点，注意这会动节点——评估是否值得，或做成圆桌专用 synthesize 变体）。
+- 做（前端）：复用 `ChatPage`，多 AI 身份气泡（按 sender 区分头像/名）+ 人插话输入框 + 澄清问气泡（可答/跳过），连 `brainApi`。
 - 不做：配方选择（S3.7）。
-- 判据：浏览器 — 圆桌讨论中多身份气泡正确归属；输入插话被接住（手动步骤）。
+- 判据：`pytest`（圆桌端点起/续/插话/澄清分流）；浏览器 — 圆桌多身份气泡正确归属、插话被接住、模糊需求弹澄清问（手动步骤）。
+- **遗留取舍记录**：① `clarify` 的 `assess`(信心 LLM) 在 interrupt resume 时会重跑一次（assess 之后才 interrupt，节点整体重执行）——MVP 接受；接真实 LLM 后若成本敏感，拆成 `clarify(只assess)→Command(goto)→await_clarify(只interrupt)` 两节点（仿 curate 分离 LLM 与 interrupt）。② checkpoint 反序列化有 msgpack unregistered-type 警告（`AgentSlot/Msg/Claim`），未来 LangGraph 版本会 block——需注册类型或调 serde。
 
 **S3.7 RecipePicker（L1 选配方）**
 - 做：入口让用户在「圆桌」「扇出」间选配方启动一场。

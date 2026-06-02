@@ -22,7 +22,7 @@ from functools import partial
 
 from langgraph.graph import END, START, StateGraph
 
-from .nodes.clarify import clarify
+from .nodes.clarify import ClarifyFn, clarify
 from .nodes.extract import ClaimExtractor
 from .nodes.frame import AssignFn, frame
 from .nodes.generate import GenerateFn, PersonaProvider
@@ -46,6 +46,7 @@ def build_roundtable_recipe(
     persona_provider: PersonaProvider | None = None,
     extract: ClaimExtractor | None = None,
     pick: PickFn | None = None,
+    clarify_assess: ClarifyFn | None = None,
     human_in_loop: bool = False,
 ):
     """圆桌配方整图：CLARIFY→FRAME→(SCHEDULE⇄TURN)*→SYNTHESIZE。节点依赖可注入以离线测试。
@@ -54,7 +55,7 @@ def build_roundtable_recipe(
     任意轮插话（让位/改向），复用 S3.0 interrupt 机制。默认关（自动连续讨论，到预算闸/停）。
     """
     g = StateGraph(GroupState)
-    g.add_node("clarify", clarify)
+    g.add_node("clarify", partial(clarify, assess=clarify_assess))
     g.add_node("frame", partial(frame, assign=assign))
     g.add_node("schedule", partial(schedule, pick=pick))
     g.add_node(

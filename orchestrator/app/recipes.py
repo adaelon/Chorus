@@ -16,7 +16,7 @@ from functools import partial
 
 from langgraph.graph import END, START, StateGraph
 
-from .nodes.clarify import clarify
+from .nodes.clarify import ClarifyFn, clarify
 from .nodes.curate import ReputationAdjuster, curate_interrupt_node
 from .nodes.fanout import fanout
 from .nodes.frame import AssignFn, frame
@@ -32,10 +32,11 @@ def build_fanout_recipe(
     generate: GenerateFn | None = None,
     persona_provider: PersonaProvider | None = None,
     reputation_adjuster: ReputationAdjuster | None = None,
+    clarify_assess: ClarifyFn | None = None,
 ):
     """扇出配方整图：CLARIFY→FRAME→FANOUT→CURATE(interrupt 循环)→SYNTHESIZE。"""
     g = StateGraph(GroupState)
-    g.add_node("clarify", clarify)
+    g.add_node("clarify", partial(clarify, assess=clarify_assess))
     g.add_node("frame", partial(frame, assign=assign))
     g.add_node("fanout", partial(fanout, generate=generate, persona_provider=persona_provider))
     g.add_node(
