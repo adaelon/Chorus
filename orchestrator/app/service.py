@@ -32,9 +32,13 @@ from .db.models import Contact
 from .db.repo import persona_provider_from, reputation_adjuster_from
 from .nodes.clarify import ClarifyFn
 from .nodes.curate import Eliminate, Pick, Reassign, ReputationAdjuster
+from .nodes.extract import ClaimExtractor
 from .nodes.frame import AssignFn
 from .nodes.generate import GenerateFn, PersonaProvider
+from .nodes.schedule import PickFn
+from .nodes.synthesize import ComposeFn
 from .recipes import build_fanout_recipe
+from .recipes_roundtable import build_roundtable_recipe
 from .state import AgentSlot, Msg
 
 AnyCommand = Annotated[Union[Pick, Eliminate, Reassign], Field(discriminator="kind")]
@@ -59,6 +63,13 @@ class ClarifyReq(BaseModel):
     group_key: str
     answer: str | None = None  # 答复澄清问（并入 history 后进 FRAME）
     skip: bool = False  # 跳过澄清，强制进 FRAME
+
+
+class RoundtableReq(BaseModel):
+    group_key: str
+    request: str  # 圆桌议题（作为开场 human 消息进 history）
+    roster: list[str]  # contact_ids（到场成员）
+    max_turns_per_human: int | None = None  # 预算闸（默认用 GroupState 缺省）
 
 
 class ContactIn(BaseModel):
@@ -135,6 +146,93 @@ def _inbound_result(result) -> dict:
     return {"type": "candidates", "candidates": candidates}
 
 
+def _to_roundtable_event(mode: str, payload) -> dict | None:
+    """把圆桌图 astream 的 (mode,payload) 转 SSE 事件；不关心的返回 None。
+
+    事件：framed(维度) / delta(turn 内逐 token，按 agent 路由) / turn(一轮发言完成) /
+    human_gate·clarify(interrupt 让位/澄清窗口) / output(圆桌主笔综合)。
+    """
+    if mode == "messages":
+        chunk, meta = payload
+        content = getattr(chunk, "content", "")
+        if not content or meta.get("langgraph_node") != "turn":
+            return None
+        tags = meta.get("tags") or []
+        cid = next((t.split(":", 1)[1] for t in tags if t.startswith("agent:")), None)
+        text = content if isinstance(content, str) else str(content)
+        return {"type": "delta", "contact_id": cid, "text": text}
+    if mode == "updates":
+        payload = payload or {}
+        intr = payload.get("__interrupt__")
+        if intr:
+            return dict(intr[0].value)  # human_gate / clarify（payload 已带 type）
+        for node, delta in payload.items():
+            if not delta:
+                continue
+            if node == "frame" and "roster" in delta:
+                return {
+                    "type": "framed",
+                    "roster": [
+                        {"contact_id": s.contact_id, "dimension": s.dimension}
+                        for s in delta["roster"]
+                    ],
+                }
+            if node == "turn" and delta.get("history"):
+                last = delta["history"][-1]
+                return {
+                    "type": "turn",
+                    "contact_id": last.sender_id,
+                    "dimension": last.dimension,
+                    "text": last.text,
+                }
+            if node == "synthesize" and "output" in delta:
+                return {"type": "output", "output": delta["output"]}
+    return None
+
+
+def _sse_from_astream(graph, stream_input, cfg, to_event) -> StreamingResponse:
+    """通用 SSE：跑 graph.astream（updates+messages），经 to_event 转事件 + 心跳保活。
+
+    stream_input 可是初始 state（起场）或 `Command(resume=...)`（续场，S3.6d 复用）。
+    图在 interrupt（human_gate/clarify）处自然暂停 → 发对应 type 事件后收 done。
+    """
+    queue: asyncio.Queue = asyncio.Queue()
+
+    async def produce():
+        try:
+            async for mode, payload in graph.astream(
+                stream_input, cfg, stream_mode=["updates", "messages"]
+            ):
+                ev = to_event(mode, payload)
+                if ev:
+                    await queue.put(ev)
+        except Exception as e:  # noqa: BLE001
+            await queue.put({"type": "error", "detail": str(e)})
+        finally:
+            await queue.put({"type": "done"})
+
+    async def gen():
+        task = asyncio.create_task(produce())
+        try:
+            while True:
+                try:
+                    ev = await asyncio.wait_for(queue.get(), timeout=15)
+                except asyncio.TimeoutError:
+                    yield ": heartbeat\n\n"  # 保活：turn 思考/长沉默时防断连
+                    continue
+                yield _sse(ev)
+                if ev.get("type") == "done":
+                    break
+        finally:
+            task.cancel()
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 async def _require_thread(graph, group_key: str) -> None:
     """resume 前置校验：线程须已有 checkpoint（即先 /inbound 过）。"""
     snap = await graph.aget_state(_cfg(group_key))
@@ -153,6 +251,9 @@ def create_app(
     persona_provider: PersonaProvider | None = None,
     reputation_adjuster: ReputationAdjuster | None = None,
     clarify_assess: ClarifyFn | None = None,
+    extract: ClaimExtractor | None = None,
+    pick: PickFn | None = None,
+    compose: ComposeFn | None = None,
     db_path: str = "group_checkpoints.sqlite",
     registry_db_path: str = "chorus_registry.sqlite",
 ) -> FastAPI:
@@ -167,27 +268,37 @@ def create_app(
         ra = reputation_adjuster or reputation_adjuster_from(sf)
         app.state.persona_provider = pp
         app.state.reputation_adjuster = ra
+
+        def _build_graphs(saver) -> None:
+            # 两张配方图共享同一 checkpointer（不同 group_key 互不干扰）。
+            app.state.graph = build_fanout_recipe(
+                saver,
+                assign=assign,
+                generate=generate,
+                persona_provider=pp,
+                reputation_adjuster=ra,
+                clarify_assess=clarify_assess,
+            )
+            # 圆桌：human_in_loop=True 每轮停在 human_gate（让位窗口，S3.6d resume 续）。
+            app.state.roundtable_graph = build_roundtable_recipe(
+                saver,
+                assign=assign,
+                generate=generate,
+                persona_provider=pp,
+                extract=extract,
+                pick=pick,
+                clarify_assess=clarify_assess,
+                compose=compose,
+                human_in_loop=True,
+            )
+
         try:
             if checkpointer is not None:
-                app.state.graph = build_fanout_recipe(
-                    checkpointer,
-                    assign=assign,
-                    generate=generate,
-                    persona_provider=pp,
-                    reputation_adjuster=ra,
-                    clarify_assess=clarify_assess,
-                )
+                _build_graphs(checkpointer)
                 yield
             else:
                 async with AsyncSqliteSaver.from_conn_string(db_path) as saver:
-                    app.state.graph = build_fanout_recipe(
-                        saver,
-                        assign=assign,
-                        generate=generate,
-                        persona_provider=pp,
-                        reputation_adjuster=ra,
-                        clarify_assess=clarify_assess,
-                    )
+                    _build_graphs(saver)
                     yield
         finally:
             await registry_engine.dispose()
@@ -304,6 +415,26 @@ def create_app(
             gen(),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    @app.post("/roundtable/stream")
+    async def roundtable_stream(req: RoundtableReq, request: Request):
+        """SSE 起一场圆桌：议题作开场 human 消息进 history、pending_human=None（入口约定）。
+
+        图跑到第一轮发言后停在 human_gate（human_in_loop=True）——SSE 出 framed/delta/turn
+        后发 human_gate 事件收束；续场/插话见 S3.6d。信心不足则先出 clarify 事件。
+        """
+        graph = request.app.state.roundtable_graph
+        state_in: dict = {
+            "group_key": req.group_key,
+            "roster": [AgentSlot(contact_id=c) for c in req.roster],
+            "history": [Msg(sender_id="human", sender_kind="human", text=req.request)],
+            "pending_human": None,
+        }
+        if req.max_turns_per_human is not None:
+            state_in["max_turns_per_human"] = req.max_turns_per_human
+        return _sse_from_astream(
+            graph, state_in, _cfg(req.group_key), _to_roundtable_event
         )
 
     @app.post("/synthesize")

@@ -13,9 +13,15 @@ import uvicorn
 
 from .llm import make_chat_model
 from .nodes.clarify import default_clarifier
+from .nodes.synthesize import default_composer
 from .service import create_app
 
-app = create_app(clarify_assess=default_clarifier(make_chat_model()))
+_model = make_chat_model()
+# extract/pick 不在此显式注入：节点默认懒构建真实 LLM（同 assign/generate）。
+app = create_app(
+    clarify_assess=default_clarifier(_model),
+    compose=default_composer(_model),
+)
 
 
 def main() -> None:
