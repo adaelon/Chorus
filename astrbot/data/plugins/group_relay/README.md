@@ -47,4 +47,15 @@ InboundMsg → POST `{brain_url}/inbound`（`brain_url` 可在插件配置改，
 
 **入站**：在群里发一条消息 → 大脑 `/inbound` 收到一条 InboundMsg；**AstrBot 自身不自动回复**（stop_event 生效）。
 
-去重 / 转发决策 / 规范化逻辑离线测：`pytest astrbot/data/plugins/group_relay/tests`。多 bot 映射 = S4.3。
+## 测试
+
+- **离线纯逻辑**（去重/决策/规范化，无需 astrbot）：
+  `orchestrator/.venv/Scripts/python -m pytest astrbot/data/plugins/group_relay/tests`
+- **入站 smoke**（真实 astrbot 加载插件 + 假大脑收 POST，验转发/去重/stop_event，无需 telegram）：
+  ```
+  cd E:\allwork\download\agent\Chorus\astrbot
+  E:\AnacondaEnvs\astrbot_env\python.exe data\plugins\group_relay\smoke_inbound.py
+  ```
+- **全链路**（真实 telegram 群消息→大脑、出站 curl→bot 发言、无自动回复）：需先配 telegram bot（S4.3），见上文判据。
+
+多 bot 映射 = S4.3。
