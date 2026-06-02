@@ -100,10 +100,10 @@ class GroupRelay(Star):
         """群消息 → 去重 → 规范化转发大脑 → stop_event 防 AstrBot 自动回复。"""
         action = decide(
             group_key=event.unified_msg_origin,
-            msg_id=event.message_obj.message_id,
             sender_id=event.get_sender_id(),
             self_id=event.get_self_id(),
             text=event.get_message_str(),
+            ts=event.message_obj.timestamp,  # 跨 bot 稳定（msg_id 不稳，按内容键去重）
             dedup=self._dedup,
         )
         if action == "ignore":

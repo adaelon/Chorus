@@ -32,28 +32,31 @@ class Dedup:
         return False
 
 
-def _dedup_key(group_key: str, msg_id: str):
-    """去重键去掉平台（bot 实例）段：unified_msg_origin = "platform:type:session"，
-    N 个 bot 在同群各收到同一条消息时只有 platform 段不同（ada1: / ada2:），
-    故按 "type:session" + msg_id 跨 bot 去重（否则会漏重、转发 N 次）。"""
+def _dedup_key(group_key: str, sender_id, ts, text: str):
+    """跨 bot 去重用**内容键**，而非 native_msg_id。
+
+    原因（实测）：多 bot 群里 telegram 给各 bot 的 `message_id` 并不一致（ada1=3、ada2=2），
+    且 unified_msg_origin 的平台段也因 bot 而异（ada1: / ada2:）。同一条人类消息跨 bot
+    真正稳定的是：群会话（去平台段）+ 发送者 + 时间戳 + 文本。
+    """
     session = group_key.split(":", 1)[1] if ":" in group_key else group_key
-    return (session, msg_id)
+    return (session, sender_id, ts, text)
 
 
-def decide(*, group_key, msg_id, sender_id, self_id, text, dedup: Dedup) -> str:
+def decide(*, group_key, sender_id, self_id, text, ts, dedup: Dedup) -> str:
     """决定如何处置一条群消息：
 
       "forward"   → 规范化并转发给大脑，然后 stop_event
       "stop_only" → 同一条已转发过（其它 bot 收到的副本）→ 只 stop_event 防自动回复
       "ignore"    → 自己发的 / 空文本 / 缺关键字段 → 不转发也不截断
     """
-    if not group_key or not msg_id:
+    if not group_key:
         return "ignore"
     if sender_id and self_id and sender_id == self_id:
         return "ignore"  # 自己（本 bot）发的，不回流（多 bot 间 AI 识别留 S4.3）
     if not (text or "").strip():
         return "ignore"
-    if dedup.seen_before(_dedup_key(group_key, msg_id)):
+    if dedup.seen_before(_dedup_key(group_key, sender_id, ts, text)):
         return "stop_only"
     return "forward"
 

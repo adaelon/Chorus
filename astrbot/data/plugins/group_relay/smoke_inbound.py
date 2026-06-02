@@ -38,9 +38,10 @@ class _FakeMsgObj:
 class _FakeEvent:
     """仿真 AstrMessageEvent：只实现 on_group_message 用到的访问器。"""
 
-    def __init__(self, message_id: str, umo: str = "ada1:GroupMessage:42"):
+    def __init__(self, message_id: str, text: str = "在吗", umo: str = "ada1:GroupMessage:42"):
         self.unified_msg_origin = umo
         self.message_obj = _FakeMsgObj(message_id, 1717300000)
+        self._text = text
         self.stopped = False
 
     def get_sender_id(self):
@@ -50,7 +51,7 @@ class _FakeEvent:
         return "botself"
 
     def get_message_str(self):
-        return "在吗"
+        return self._text
 
     def get_sender_name(self):
         return "小明"
@@ -88,24 +89,25 @@ async def main() -> int:
     await plugin.initialize()
 
     try:
-        e1 = _FakeEvent("m1")  # ada1 收到
-        e1dup = _FakeEvent("m1", umo="ada2:GroupMessage:42")  # 另一个 bot ada2 收到同一条
-        e2 = _FakeEvent("m2")
+        # 实测：同一条消息两个 bot 拿到的 msg_id 不同（3 vs 2）→ 按内容键去重
+        e1 = _FakeEvent("3", text="大家好")  # ada1 收到
+        e1dup = _FakeEvent("2", text="大家好", umo="ada2:GroupMessage:42")  # ada2 收到同一条（msg_id 不同）
+        e2 = _FakeEvent("5", text="第二条")  # 真·另一条消息
         for e in (e1, e1dup, e2):
             await plugin.on_group_message(e)
         await asyncio.sleep(0.1)  # 等 POST 落地
 
         ok = True
-        # ① 转发：m1 + m2 各一次（去重后），m1 重复不再发
-        ids = [m["native_msg_id"] for m in received]
-        if sorted(ids) != ["m1", "m2"]:
-            print(f"FAIL 转发去重：期望 [m1,m2]，实际 {ids}")
+        # ① 转发去重：两个 bot 的"大家好"只转一次 + 第二条各转一次 → 文本 [大家好, 第二条]
+        texts = [m["text"] for m in received]
+        if sorted(texts) != sorted(["大家好", "第二条"]):
+            print(f"FAIL 转发去重：期望 [大家好,第二条]，实际 {texts}")
             ok = False
         else:
-            print(f"PASS 转发去重：大脑收到 {ids}（同 m1 两次只转一次）")
+            print(f"PASS 转发去重：大脑收到 {texts}（ada1/ada2 同一条只转一次，msg_id 3≠2 仍去重）")
         # ② 规范化字段
-        if received and received[0].get("sender_kind") == "human" and received[0].get("text") == "在吗":
-            print("PASS 规范化：sender_kind=human, text=在吗")
+        if received and all(m.get("sender_kind") == "human" for m in received):
+            print("PASS 规范化：sender_kind=human")
         else:
             print(f"FAIL 规范化：{received[:1]}")
             ok = False

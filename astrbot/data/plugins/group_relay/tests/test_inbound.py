@@ -39,31 +39,38 @@ def test_dedup_is_bounded():
     assert d.seen_before(("g", "m0")) is False  # m0 被淘汰 → 再视为首见
 
 
-# ---- decide：同一 msg_id 两次只转发一次 ----
+# ---- decide：同一条内容只转发一次（按内容键，非 msg_id）----
 
 
-def test_same_msg_id_forwarded_once_then_stop_only():
+def test_same_message_forwarded_once_then_stop_only():
     d = Dedup()
-    common = dict(group_key="g1", msg_id="m1", sender_id="u", self_id="bot", text="hi", dedup=d)
+    common = dict(group_key="g1", sender_id="u", self_id="bot", text="hi", ts=100, dedup=d)
     assert decide(**common) == "forward"     # 第一个 bot 收到 → 转发
     assert decide(**common) == "stop_only"   # 第二个 bot 收到同一条 → 不再转发，仅截断
 
 
-def test_cross_bot_same_message_deduped():
-    """N bot（ada1/ada2）在同群各收到同一条：平台段不同但 type:session+msg_id 相同 → 去重。"""
+def test_cross_bot_same_message_deduped_despite_different_msg_id():
+    """实测：ada1/ada2 同群同一条，平台段不同、msg_id 也不同(3 vs 2)，但 sender+ts+text 同 → 去重。"""
     d = Dedup()
-    base = dict(msg_id="m1", sender_id="u", self_id="self", text="hi", dedup=d)
-    assert decide(group_key="ada1:GroupMessage:42", **base) == "forward"    # ada1 先到
-    assert decide(group_key="ada2:GroupMessage:42", **base) == "stop_only"  # ada2 同一条 → 去重
+    base = dict(sender_id="6543441985", self_id="self", text="大家好", ts=1780398595, dedup=d)
+    assert decide(group_key="ada1:GroupMessage:-519", **base) == "forward"    # ada1（msg_id=3）先到
+    assert decide(group_key="ada2:GroupMessage:-519", **base) == "stop_only"  # ada2（msg_id=2）同一条 → 去重
+
+
+def test_distinct_messages_same_second_not_deduped():
+    """同秒不同文本 = 两条不同消息 → 都转发（内容键含 text）。"""
+    d = Dedup()
+    base = dict(group_key="ada1:GroupMessage:-519", sender_id="u", self_id="self", ts=100, dedup=d)
+    assert decide(**{**base, "text": "你好"}) == "forward"
+    assert decide(**{**base, "text": "在吗"}) == "forward"
 
 
 def test_decide_ignores_self_empty_and_missing():
     d = Dedup()
-    base = dict(group_key="g", msg_id="m", sender_id="u", self_id="bot", text="hi", dedup=d)
+    base = dict(group_key="g", sender_id="u", self_id="bot", text="hi", ts=100, dedup=d)
     assert decide(**{**base, "sender_id": "bot"}) == "ignore"   # 自己发的
     assert decide(**{**base, "text": "   "}) == "ignore"        # 空白
     assert decide(**{**base, "group_key": ""}) == "ignore"      # 缺 group_key
-    assert decide(**{**base, "msg_id": ""}) == "ignore"         # 缺 msg_id
 
 
 # ---- make_inbound_msg ----
