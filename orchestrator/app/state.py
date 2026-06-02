@@ -46,3 +46,4 @@ class GroupState(BaseModel):
     turns_since_human: int = 0
     max_turns_per_human: int = 6
     pending_human: Msg | None = None
+    next_speaker: str | None = None  # 下一个发言的 contact_id（S3.2 SCHEDULE 决定，TURN 消费）
