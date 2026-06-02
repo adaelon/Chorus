@@ -19,6 +19,32 @@
       </v-col>
     </v-row>
 
+    <!-- L2 荐配方（S5.1）：说任务，主持人替你选配方并带你过去 -->
+    <v-row justify="center" class="mt-2">
+      <v-col cols="12" sm="11" md="10">
+        <v-card variant="tonal">
+          <v-card-text>
+            <div class="text-subtitle-2 mb-2">拿不准选哪个？直接说任务，让主持人帮你选：</div>
+            <v-textarea
+              v-model="task"
+              label="你的任务/需求"
+              rows="2"
+              auto-grow
+              variant="outlined"
+              hide-details
+              @keyup.ctrl.enter="recommend"
+            />
+            <div class="mt-2 d-flex align-center">
+              <v-btn color="primary" :loading="picking" :disabled="!task.trim()" @click="recommend">
+                让主持人选
+              </v-btn>
+              <span v-if="pickMsg" class="text-caption ml-3">{{ pickMsg }}</span>
+            </div>
+          </v-card-text>
+        </v-card>
+      </v-col>
+    </v-row>
+
     <!-- brainApi 连通指示（继承 S1.7）-->
     <div class="text-center mt-8">
       <v-chip
@@ -37,9 +63,13 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { brainApi } from '../api/brain'
+import { selectRecipe } from '../api/chorus'
 
 const router = useRouter()
 const health = ref('') // '' | 'ok' | 'down'
+const task = ref('')
+const picking = ref(false)
+const pickMsg = ref('')
 
 const recipes = [
   {
@@ -61,6 +91,22 @@ const recipes = [
 ]
 
 const go = (to) => router.push(to)
+const RECIPE_ROUTE = { roundtable: '/roundtable', fanout: '/curate' }
+
+async function recommend() {
+  picking.value = true
+  pickMsg.value = ''
+  try {
+    const { recipe, reason } = await selectRecipe(task.value)
+    const name = recipe === 'fanout' ? '扇出策展' : '圆桌'
+    pickMsg.value = `主持人选了「${name}」${reason ? '：' + reason : ''}，正在进入…`
+    router.push(RECIPE_ROUTE[recipe] || '/roundtable')
+  } catch (e) {
+    pickMsg.value = '荐配方失败：' + String(e?.message || e)
+  } finally {
+    picking.value = false
+  }
+}
 
 async function ping() {
   try {

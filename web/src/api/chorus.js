@@ -93,6 +93,10 @@ export const roundtableResume = (group_key, resume, handlers) =>
 export const roundtableInterject = (group_key, text) =>
   brainApi.post(`/roundtable/${group_key}/interject`, { text }).then((r) => r.data)
 
+// L2 荐配方（S5.1）：按任务让主持人选 roundtable|fanout
+export const selectRecipe = (task) =>
+  brainApi.post('/recipe/select', { task }).then((r) => r.data)
+
 // Contact 注册表 CRUD（S2.4）
 export const listContacts = () => brainApi.get('/contacts').then((r) => r.data)
 export const createContact = (c) => brainApi.post('/contacts', c).then((r) => r.data)

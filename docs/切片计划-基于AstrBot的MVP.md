@@ -201,7 +201,7 @@
 - 不做：L2 选配方 / L3 组原语（S5.1/5.2）；改原语或圆桌图拓扑（纯搬运，行为不变）。
 - 判据：`pytest` — runtime 出 OutboundEvent 序列正确（起场→`Turn*`→`Done`；插话→改向）；web/telegram 两 adapter 把**同一** runtime 事件各自映射对（离线假 transport）；**既有 web SSE 与 telegram 行为不变**（A3，原 `test_roundtable_service`/`test_relay` 仍绿或等价迁移）。
 
-**S5.1 L2 主持人荐配方**（§6.13）
+**S5.1 L2 主持人荐配方 ✅**（§6.13）
 - 做：`select_recipe(task)->recipe` 廉价 LLM 调用，在**已测静态配方库**（圆桌/扇出）里按任务选；选不准兜底默认。
 - 不做：L3 动态组原语。
 - 判据：`pytest` — 给"讨论型/创作型"任务各选对配方；非法/低信心→默认兜底（注入假 selector 离线）。

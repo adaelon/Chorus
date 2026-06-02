@@ -43,6 +43,7 @@ from .nodes.generate import GenerateFn, PersonaProvider
 from .nodes.schedule import PickFn
 from .nodes.synthesize import ComposeFn
 from .outbound_client import OutboundClient
+from .recipe_select import RecipeSelector, select_recipe
 from .recipes import build_fanout_recipe
 from .recipes_roundtable import build_roundtable_recipe
 from .relay import RelayDriver
@@ -65,6 +66,10 @@ class CurateReq(BaseModel):
 
 class GroupReq(BaseModel):
     group_key: str
+
+
+class RecipeSelectReq(BaseModel):
+    task: str  # 用户任务/需求；主持人据此荐配方（L2，§6.13）
 
 
 class ClarifyReq(BaseModel):
@@ -256,6 +261,7 @@ def create_app(
     extract: ClaimExtractor | None = None,
     pick: PickFn | None = None,
     compose: ComposeFn | None = None,
+    recipe_selector: RecipeSelector | None = None,
     bridge_url: str = "http://127.0.0.1:9876",
     db_path: str = "group_checkpoints.sqlite",
     registry_db_path: str = "chorus_registry.sqlite",
@@ -335,6 +341,12 @@ def create_app(
     @app.get("/health")
     async def health():
         return {"status": "ok"}
+
+    @app.post("/recipe/select")
+    async def recipe_select_ep(req: RecipeSelectReq):
+        """L2 荐配方（§6.13）：按任务返回 roundtable|fanout（未配置 selector→默认）。"""
+        choice = await select_recipe(req.task, selector=recipe_selector)
+        return {"recipe": choice.recipe, "reason": choice.reason}
 
     @app.post("/inbound")
     async def inbound(req: InboundReq, request: Request):
