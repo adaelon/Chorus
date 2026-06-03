@@ -7,7 +7,11 @@ from __future__ import annotations
 
 from sqlmodel import select
 
-from .models import Contact
+from ..recipes_builtin import AUTO, FANOUT, ROUNDTABLE, ROUNDTABLE_CONTINUOUS
+from .models import Contact, Recipe
+
+# 内置配方（S5.4.2a）：id = graph["recipe"] slug，启动 seed 进库、内置不可删。
+_BUILTINS = (FANOUT, ROUNDTABLE, ROUNDTABLE_CONTINUOUS, AUTO)
 
 
 def persona_provider_from(session_factory):
@@ -43,6 +47,21 @@ def bot_ref_provider_from(session_factory):
             return c.bot_ref if (c and c.bot_ref) else None
 
     return provider
+
+
+async def seed_builtin_recipes(session_factory) -> None:
+    """启动幂等 seed 四内置配方（S5.4.2a）：缺则插、在则刷 graph/name（随 JSON 演进保持同步）。"""
+    async with session_factory() as s:
+        for g in _BUILTINS:
+            rid = g["recipe"]
+            obj = await s.get(Recipe, rid)
+            if obj is None:
+                s.add(Recipe(id=rid, name=rid, builtin=True, graph=g))
+            else:
+                obj.graph = g
+                obj.builtin = True
+                s.add(obj)
+        await s.commit()
 
 
 def reputation_adjuster_from(session_factory):

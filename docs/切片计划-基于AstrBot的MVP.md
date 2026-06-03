@@ -273,9 +273,9 @@
 
 ### S5.4.2 配方库（存储 + 运行任意库内 DAG）
 
-**S5.4.2a recipe 表 + CRUD ⏳**
-- 做：注册表 db 加 `recipe(id,name,json,builtin)` + `/recipes` CRUD（仿 contacts）；三内置配方 seed 进库。
-- 判据：`test_recipe_crud` — 增删改查 + 内置不可删。
+**S5.4.2a recipe 表 + CRUD ✅**
+- 做：`db/models.py` 加 `Recipe(id,name,builtin,graph:JSON)`；`db/repo.py` 加 `seed_builtin_recipes`（四内置幂等 seed）；`/recipes` CRUD（写时 `validate_recipe` 校验、内置不可删/改）；lifespan 接 seed。
+- 判据：`tests/test_recipe_crud.py`（4 条）seed/自定义 CRUD/内置只读/拒坏图；`.venv` 全量 **147 passed, 2 skipped**。
 
 **S5.4.2b `/recipe/run` 跑库内 DAG ⏳**
 - 做：`POST /recipe/run {recipe_id, group_key, request, roster}`——取 JSON→`validate`→`compile`→跑（复用 `_sse_from_events`/`iter_events` 流式）。

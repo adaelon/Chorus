@@ -28,12 +28,13 @@ from pydantic import BaseModel, Field
 from sqlmodel import select
 
 from .db.engine import init_models, make_engine, make_session_factory
-from .db.models import Contact
+from .db.models import Contact, Recipe
 from .db.repo import (
     bot_ref_provider_from,
     persona_provider_from,
     reputation_adjuster_from,
     roster_provider_from,
+    seed_builtin_recipes,
 )
 from .nodes.clarify import ClarifyFn
 from .nodes.curate import Eliminate, Pick, Reassign, ReputationAdjuster
@@ -46,6 +47,7 @@ from .outbound_client import OutboundClient
 from .recipe_select import RecipeSelector, select_recipe
 from .recipes import build_fanout_recipe
 from .recipes_roundtable import build_roundtable_recipe
+from .recipes_validate import validate_recipe
 from .relay import RelayDriver
 from .runtime import iter_events
 from .state import AgentSlot, Msg
@@ -118,6 +120,14 @@ class ContactIn(BaseModel):
     persona_style: str = ""
     base_stance: str = ""
     bot_ref: str = ""  # AstrBot platform 实例 id（出站以该 bot 身份发言，S4.3）
+
+
+class RecipeIn(BaseModel):
+    """配方库写入（S5.4.2a）：graph 是图原生 DAG（nodes/edges），写时经 validate_recipe 校验。"""
+
+    id: str
+    name: str = ""
+    graph: dict
 
 
 def _cfg(group_key: str) -> dict:
@@ -273,6 +283,7 @@ def create_app(
         await init_models(registry_engine)
         sf = make_session_factory(registry_engine)
         app.state.session_factory = sf
+        await seed_builtin_recipes(sf)  # S5.4.2a：四内置配方幂等 seed 进库
         pp = persona_provider or persona_provider_from(sf)
         ra = reputation_adjuster or reputation_adjuster_from(sf)
         app.state.persona_provider = pp
@@ -564,5 +575,62 @@ def create_app(
             await s.delete(obj)
             await s.commit()
             return {"deleted": cid}
+
+    # ---- 配方库 CRUD（S5.4.2a，§6.16）----
+
+    @app.get("/recipes")
+    async def list_recipes(request: Request):
+        async with request.app.state.session_factory() as s:
+            return (await s.exec(select(Recipe))).all()
+
+    @app.get("/recipes/{rid}")
+    async def get_recipe(rid: str, request: Request):
+        async with request.app.state.session_factory() as s:
+            obj = await s.get(Recipe, rid)
+            if obj is None:
+                raise HTTPException(status_code=404, detail=f"recipe {rid} not found")
+            return obj
+
+    @app.post("/recipes")
+    async def create_recipe(r: RecipeIn, request: Request):
+        errs = validate_recipe(r.graph)
+        if errs:
+            raise HTTPException(status_code=422, detail=errs)  # 写时校验（§6.16 C，复用 1c）
+        async with request.app.state.session_factory() as s:
+            if await s.get(Recipe, r.id) is not None:
+                raise HTTPException(status_code=409, detail=f"recipe {r.id} exists")
+            obj = Recipe(id=r.id, name=r.name or r.id, builtin=False, graph=r.graph)
+            s.add(obj)
+            await s.commit()
+            return obj
+
+    @app.put("/recipes/{rid}")
+    async def update_recipe(rid: str, r: RecipeIn, request: Request):
+        errs = validate_recipe(r.graph)
+        if errs:
+            raise HTTPException(status_code=422, detail=errs)
+        async with request.app.state.session_factory() as s:
+            obj = await s.get(Recipe, rid)
+            if obj is None:
+                raise HTTPException(status_code=404, detail=f"recipe {rid} not found")
+            if obj.builtin:
+                raise HTTPException(status_code=403, detail=f"builtin recipe {rid} is read-only")
+            obj.name = r.name or rid
+            obj.graph = r.graph
+            s.add(obj)
+            await s.commit()
+            return obj
+
+    @app.delete("/recipes/{rid}")
+    async def delete_recipe(rid: str, request: Request):
+        async with request.app.state.session_factory() as s:
+            obj = await s.get(Recipe, rid)
+            if obj is None:
+                raise HTTPException(status_code=404, detail=f"recipe {rid} not found")
+            if obj.builtin:
+                raise HTTPException(status_code=403, detail=f"builtin recipe {rid} cannot be deleted")
+            await s.delete(obj)
+            await s.commit()
+            return {"deleted": rid}
 
     return app

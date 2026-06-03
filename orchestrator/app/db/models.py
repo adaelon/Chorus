@@ -54,3 +54,19 @@ class Message(SQLModel, table=True):
     text: str
     dimension: str | None = None
     ts: float = Field(default_factory=time.time)
+
+
+class Recipe(SQLModel, table=True):
+    """配方库（S5.4.2a，§6.16）：用户/内置的声明式 DAG（nodes/edges）。
+
+    `graph` 是图原生 JSON（compile_recipe/validate_recipe 的输入）；`builtin` 标记内置三/四配方，
+    内置不可删（启动 seed，见 repo.seed_builtin_recipes）。
+    """
+
+    __tablename__ = "recipes"
+
+    id: str = Field(primary_key=True)
+    name: str = ""
+    builtin: bool = False
+    graph: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    created_at: float = Field(default_factory=time.time)
