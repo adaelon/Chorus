@@ -33,6 +33,18 @@ class LLMSettings:
     structured_method: str = "text_json"
     # 可选输出上限（控延迟/成本）；None=不限。LLM_MAX_TOKENS。
     max_tokens: int | None = None
+    # 流式 chunk 间隔看门狗（秒）：两个 chunk 间超此值报错。kimi 等推理模型在 reasoning→正文
+    # 间隙可能 >120s（langchain 默认），故放宽。LLM_STREAM_CHUNK_TIMEOUT；0/none=禁用。
+    stream_chunk_timeout: float | None = 600.0
+
+
+def _parse_chunk_timeout() -> float | None:
+    raw = os.environ.get("LLM_STREAM_CHUNK_TIMEOUT")
+    if raw is None:
+        return 600.0
+    if raw.strip().lower() in ("0", "none", ""):
+        return None  # 禁用看门狗
+    return float(raw)
 
 
 def load_llm_settings() -> LLMSettings:
@@ -45,4 +57,5 @@ def load_llm_settings() -> LLMSettings:
         temperature=float(os.environ.get("LLM_TEMPERATURE", "0.75")),
         structured_method=os.environ.get("LLM_STRUCTURED_METHOD", "text_json"),
         max_tokens=int(raw_max) if raw_max else None,
+        stream_chunk_timeout=_parse_chunk_timeout(),
     )

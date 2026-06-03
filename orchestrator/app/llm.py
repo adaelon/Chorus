@@ -37,6 +37,8 @@ def make_chat_model(**overrides: Any) -> ChatOpenAI:
         "api_key": s.api_key,
         "model": s.model,
         "temperature": s.temperature,
+        # 放宽流式 chunk 间隔看门狗（默认 120s 会误杀 kimi 推理间隙）；None=禁用。
+        "stream_chunk_timeout": s.stream_chunk_timeout,
     }
     if s.max_tokens:
         params["max_tokens"] = s.max_tokens
