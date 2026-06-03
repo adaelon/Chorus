@@ -667,6 +667,26 @@ def create_app(
             follow=_RT_FOLLOW_STATUS,
         )
 
+    @app.post("/session/{key}/retry/stream")
+    async def session_retry_stream(key: str, request: Request):
+        """出错重试（S5.8a，§6.17）：从最后 checkpoint 重跑挂起节点（`astream(None)`），不整场重来。
+
+        节点抛错时 checkpointer 停在该节点前的最后成功超步；以 `None` 续跑 = 重试该节点。
+        按会话 recipe_id 取对应图（共用 `_graph_for`）。
+        """
+        async with request.app.state.session_factory() as s:
+            conv = await s.get(Conversation, key)
+        recipe_id = conv.recipe_id if conv else ""
+        graph = await _graph_for(request.app.state, recipe_id)
+        await _require_thread(graph, key)
+        return _sse_from_events(
+            graph,
+            None,  # 断点续跑：重跑上次报错的挂起节点
+            _cfg(key),
+            start_status=_RT_START_STATUS,
+            follow=_RT_FOLLOW_STATUS,
+        )
+
     @app.post("/relay/inbound")
     async def relay_inbound(req: RelayInboundReq, request: Request):
         """group_relay 桥入站：人类群消息 → 起/续圆桌（后台多轮、出站推回群）。"""

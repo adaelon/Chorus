@@ -339,10 +339,10 @@
 
 > 节点报错时 checkpointer 停在该节点前的最后成功超步；以 `None` 续跑 = 重试该节点（不整场重来）。复用 S5.7a 的 `_graph_for`。
 
-**S5.8a 重试端点 ⏳**
-- 做：`POST /session/{key}/retry/stream`——`_graph_for(recipe_id)` 取图 → `iter_events(graph, None, cfg)` 从最后 checkpoint 重跑挂起节点 → SSE。**先 verify** LangGraph `astream(None)` 续跑语义（注入"首次抛错、二次成功"的假节点）。
-- 不做：前端。
-- 判据：`pytest` — 假 turn 首调抛错→第一段 SSE 出 error；retry 端点续跑→出 turn/output（断点续，不重跑已完成轮）。
+**S5.8a 重试端点 ✅**
+- 做：`POST /session/{key}/retry/stream`——`_graph_for(recipe_id)` 取图 → `_sse_from_events(graph, None, cfg)` 从最后 checkpoint 重跑挂起节点。**已 verify** LangGraph `astream(None)` 续跑语义。
+- 不做：前端（S5.8b）。
+- 判据：`tests/service/test_retry.py` — 假 generate 首调抛错→起场 SSE 出 error；retry→出 turn+human_gate；且 frame 的 assign 只跑 1 次（断点续证据）、generate 跑 2 次；`.venv` 全量 **164 passed, 2 skipped**。
 
 **S5.8b 前端重试按钮 ⏳**
 - 做：SSE `error` 事件 → 显示「重试」按钮 + 清掉报错那一轮的半截气泡 → 调 retry 端点续流（handlers 同圆桌）。
