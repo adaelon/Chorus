@@ -41,12 +41,14 @@ from .nodes.curate import Eliminate, Pick, Reassign, ReputationAdjuster
 from .nodes.extract import ClaimExtractor
 from .nodes.frame import AssignFn
 from .nodes.generate import GenerateFn, PersonaProvider
+from .nodes.plan import PlanFn
 from .nodes.schedule import PickFn
 from .nodes.synthesize import ComposeFn
 from .recipes import (
     RecipeSelector,
     build_fanout_recipe,
     build_roundtable_recipe,
+    compile_recipe,
     select_recipe,
     validate_recipe,
 )
@@ -86,6 +88,16 @@ class RoundtableReq(BaseModel):
     request: str  # 圆桌议题（作为开场 human 消息进 history）
     roster: list[str]  # contact_ids（到场成员）
     max_turns_per_human: int | None = None  # 预算闸（默认用 GroupState 缺省）
+
+
+class RecipeRunReq(BaseModel):
+    """跑库内任意配方（S5.4.2b）：按 recipe_id 取 graph→编译→流式跑。"""
+
+    recipe_id: str
+    group_key: str
+    request: str  # 议题/需求（作为开场 human 消息进 history）
+    roster: list[str]  # contact_ids（到场成员）
+    max_turns_per_human: int | None = None
 
 
 class RoundtableResumeReq(BaseModel):
@@ -271,6 +283,7 @@ def create_app(
     clarify_assess: ClarifyFn | None = None,
     extract: ClaimExtractor | None = None,
     pick: PickFn | None = None,
+    planner: PlanFn | None = None,
     compose: ComposeFn | None = None,
     recipe_selector: RecipeSelector | None = None,
     bridge_url: str = "http://127.0.0.1:9876",
@@ -329,6 +342,19 @@ def create_app(
             app.state.relay_driver = RelayDriver(
                 relay_graph, outbound, roster_provider_from(sf)
             )
+            # S5.4.2b：存 saver + live deps，供 /recipe/run 按需编译任意库内配方。
+            app.state.saver = saver
+            app.state.recipe_deps = {
+                "assign": assign,
+                "generate": generate,
+                "persona_provider": pp,
+                "reputation_adjuster": ra,
+                "extract": extract,
+                "pick": pick,
+                "planner": planner,
+                "compose": compose,
+                "assess": clarify_assess,
+            }
 
         try:
             if checkpointer is not None:
@@ -359,6 +385,39 @@ def create_app(
         """L2 荐配方（§6.13）：按任务返回 roundtable|fanout（未配置 selector→默认）。"""
         choice = await select_recipe(req.task, selector=recipe_selector)
         return {"recipe": choice.recipe, "reason": choice.reason}
+
+    @app.post("/recipe/run")
+    async def recipe_run(req: RecipeRunReq, request: Request):
+        """跑库内任意配方（S5.4.2b，§6.16）：取 graph→validate→compile(live deps)→SSE 流式。
+
+        图在 interrupt（human_gate/clarify）处自然暂停 → 发对应事件后收 done；自治图（如 auto）
+        一气呵成跑到 output→END。续场 resume 复用现有 `/roundtable/{key}/resume/stream`（共享 saver）。
+        """
+        async with request.app.state.session_factory() as s:
+            rec = await s.get(Recipe, req.recipe_id)
+        if rec is None:
+            raise HTTPException(status_code=404, detail=f"recipe {req.recipe_id} not found")
+        errs = validate_recipe(rec.graph)
+        if errs:
+            raise HTTPException(status_code=422, detail=errs)
+        graph = compile_recipe(
+            rec.graph, request.app.state.saver, deps=request.app.state.recipe_deps
+        )
+        state_in: dict = {
+            "group_key": req.group_key,
+            "roster": [AgentSlot(contact_id=c) for c in req.roster],
+            "history": [Msg(sender_id="human", sender_kind="human", text=req.request)],
+            "pending_human": None,
+        }
+        if req.max_turns_per_human is not None:
+            state_in["max_turns_per_human"] = req.max_turns_per_human
+        return _sse_from_events(
+            graph,
+            state_in,
+            _cfg(req.group_key),
+            start_status=_RT_START_STATUS,
+            follow=_RT_FOLLOW_STATUS,
+        )
 
     @app.post("/inbound")
     async def inbound(req: InboundReq, request: Request):

@@ -277,9 +277,11 @@
 - 做：`db/models.py` 加 `Recipe(id,name,builtin,graph:JSON)`；`db/repo.py` 加 `seed_builtin_recipes`（四内置幂等 seed）；`/recipes` CRUD（写时 `validate_recipe` 校验、内置不可删/改）；lifespan 接 seed。
 - 判据：`tests/test_recipe_crud.py`（4 条）seed/自定义 CRUD/内置只读/拒坏图；`.venv` 全量 **147 passed, 2 skipped**。
 
-**S5.4.2b `/recipe/run` 跑库内 DAG ⏳**
-- 做：`POST /recipe/run {recipe_id, group_key, request, roster}`——取 JSON→`validate`→`compile`→跑（复用 `_sse_from_events`/`iter_events` 流式）。
-- 判据：`test_recipe_run` — 按 id 取内置圆桌配方端到端流式跑通（离线假节点）。
+**S5.4.2b `/recipe/run` 跑库内 DAG ✅**
+- 做：create_app 加 `planner` 形参 + 存 `app.state.saver`/`recipe_deps`（live deps）；`POST /recipe/run {recipe_id,group_key,request,roster}`——取 graph→`validate`→`compile_recipe(deps)`→`_sse_from_events` 流式；server.py 接 `default_planner`（生产可跑 auto）。
+- 判据：`tests/service/test_recipe_run.py`（3 条）内置 roundtable_continuous 跑到 output + auto(假 planner)跑到 output + 未知 id→404；`.venv` 全量 **150 passed, 2 skipped**。
+
+> **S5.4.2 配方库（a–b）完成** ✅：配方可存库/校验/分享 + 跑库内任意 DAG。L3（S5.5）与画布（S5.4.3）都复用 `/recipe/run` 这条管线。
 
 ### S5.4.3 卡片流画布（L4 对运营的门面）
 
