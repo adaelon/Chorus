@@ -4,7 +4,8 @@
   ① needs 可达：每节点 spec.needs 在**所有**从 START 到它的路径上被上游 writes（或初始输入）覆盖
      —— must 数据流定点（⊓=∩），处理环。
   ② 必有 else：有 when 出边的节点必须恰有一条无 when 的兜底边；无条件出边不得 >1（不支持并行/歧义）。
-  ③ 环上有闸：去掉所有带 budget 的 router 后，余图必须无环（否则存在不带闸的环 → 可能死循环）。
+  ③ 环上有闸：去掉所有"闸"节点（带 budget 的 router / human 节点）后，余图必须无环
+     （否则存在无闸的自主环 → 可能死循环；human 节点靠 interrupt 暂停等人，亦视作闸）。
   ④ when 合法：每条边的 when 经 check_cond 静态校验（字段/算子白名单）。
 另含结构前置：节点 id 唯一、use 已注册、边端点已知、START 有出边、END 可达、节点从 START 可达。
 
@@ -130,15 +131,19 @@ def validate_recipe(recipe: dict, *, registry: dict[str, Primitive] = REGISTRY) 
         if missing:
             errs.append(f"节点 {nid!r} 的前置 {sorted(missing)} 未被上游写入（needs 不满足）")
 
-    # ---- ③ 环上有闸：去掉带 budget 的 router 后须无环 ----
-    gated = {nid for nid in ids if registry[use_of[nid]].spec.budget is not None}
-    adj = {nid: [] for nid in ids if nid not in gated}
+    # ---- ③ 环上有闸：去掉所有"闸"节点后须无环 ----
+    # 闸 = 带 budget 的 router（预算停）或 human 节点（interrupt 暂停等人，不会自主空转）。
+    def _is_gate(nid: str) -> bool:
+        spec = registry[use_of[nid]].spec
+        return spec.budget is not None or spec.kind == "human"
+
+    adj = {nid: [] for nid in ids if not _is_gate(nid)}
     for e in edges:
         if e["from"] in adj and e["to"] in adj:
             adj[e["from"]].append(e["to"])
     cycle = _find_cycle(adj)
     if cycle is not None:
-        errs.append(f"存在不带预算闸的环：{' → '.join(cycle)}（每个环须含一个带 budget 的 router）")
+        errs.append(f"存在无闸的环：{' → '.join(cycle)}（每个环须含一个带 budget 的 router 或 human 节点）")
 
     return errs
 

@@ -1,16 +1,14 @@
-"""圆桌配方装配（S3.3）——§6.6 抽象的验收点。
+"""圆桌配方装配（S3.3 / S5.4.1d）——§6.6 抽象的验收点，现以声明式 JSON 兑现。
 
-用**已有原语**（clarify/frame/schedule/turn/synthesize，零改）接成另一种图：
+用**已有原语**（clarify/frame/schedule/turn/human_gate/synthesize，零改）接成另一种图，
+拓扑是 `recipes_builtin` 的数据（非手写 StateGraph），经 `compile_recipe` 直译：
 
     CLARIFY → FRAME → SCHEDULE ─[next_decision]→ TURN → SCHEDULE … → SYNTHESIZE → END
-                          │
-            条件边读 state.next_decision 路由：
-              next_speaker  → turn（发言后回 schedule，循环）
-              stop          → synthesize（预算闸 / 主持人收尾）
-              yield_to_human → synthesize（S3.4 改成 interrupt 打断）
 
-与扇出配方（recipes.py）共享同一套节点与装配/运行机制——加一种协作模式 = 加一个配方
-文件，**不动引擎/节点**（§6.6 模式=可组合配方成立）。
+`human_in_loop=True`（S3.4）：用 `ROUNDTABLE`（每轮发言后过 `human_gate` interrupt，真人可
+插话/改向/收尾）；否则用 `ROUNDTABLE_CONTINUOUS`（自动连续讨论，到预算闸/停）。
+
+与扇出/auto 共享同一套节点与编译/运行机制——加一种协作模式 = 加一份配方数据（§6.6）。
 
 **入口约定**：初始人类 request 作为 `history` 的开场 human 消息传入、`pending_human=None`；
 故 SCHEDULE 第一步不会因 pending_human 而让位（讨论中真人插话才注入 pending_human，S3.4）。
@@ -18,29 +16,14 @@
 
 from __future__ import annotations
 
-from functools import partial
-
-from langgraph.graph import END, START, StateGraph
-
-from .nodes.clarify import ClarifyFn, clarify
+from .nodes.clarify import ClarifyFn
 from .nodes.extract import ClaimExtractor
-from .nodes.frame import AssignFn, frame
+from .nodes.frame import AssignFn
 from .nodes.generate import GenerateFn, PersonaProvider
-from .nodes.human import human_gate
-from .nodes.schedule import PickFn, schedule
-from .nodes.synthesize import ComposeFn, synthesize
-from .nodes.turn import turn
-from .state import GroupState
-
-
-def _route_after_schedule(state: GroupState) -> str:
-    """条件边：按 SCHEDULE 落下的决策类型选下一步。"""
-    return state.next_decision or "stop"
-
-
-def _route_after_gate(state: GroupState) -> str:
-    """条件边（S5.4.0b）：human_gate 落下的 next_decision——end→收尾 / 否则继续讨论。"""
-    return "synthesize" if state.next_decision == "end" else "schedule"
+from .nodes.schedule import PickFn
+from .nodes.synthesize import ComposeFn
+from .recipes_builtin import ROUNDTABLE, ROUNDTABLE_CONTINUOUS
+from .recipes_compile import compile_recipe
 
 
 def build_roundtable_recipe(
@@ -55,46 +38,15 @@ def build_roundtable_recipe(
     compose: ComposeFn | None = None,
     human_in_loop: bool = False,
 ):
-    """圆桌配方整图：CLARIFY→FRAME→(SCHEDULE⇄TURN)*→SYNTHESIZE。节点依赖可注入以离线测试。
-
-    `human_in_loop=True`（S3.4）：每轮发言后插入 `human_gate` interrupt 横切——真人可在
-    任意轮插话（让位/改向），复用 S3.0 interrupt 机制。默认关（自动连续讨论，到预算闸/停）。
-    """
-    g = StateGraph(GroupState)
-    g.add_node("clarify", partial(clarify, assess=clarify_assess))
-    g.add_node("frame", partial(frame, assign=assign))
-    g.add_node("schedule", partial(schedule, pick=pick))
-    g.add_node(
-        "turn",
-        partial(turn, generate=generate, persona_provider=persona_provider, extract=extract),
-    )
-    g.add_node("synthesize", partial(synthesize, compose=compose))
-    g.add_edge(START, "clarify")
-    g.add_edge("clarify", "frame")
-    g.add_edge("frame", "schedule")
-
-    if human_in_loop:
-        # S5.4.0b：human_gate 只写 next_decision，跳转交条件边（continue→schedule / end→synthesize）。
-        g.add_node("human_gate", human_gate)
-        g.add_edge("turn", "human_gate")  # 每轮发言后过打断窗口
-        g.add_conditional_edges(
-            "human_gate",
-            _route_after_gate,
-            {"schedule": "schedule", "synthesize": "synthesize"},
-        )
-        yield_target = "human_gate"
-    else:
-        g.add_edge("turn", "schedule")
-        yield_target = "synthesize"
-
-    g.add_conditional_edges(
-        "schedule",
-        _route_after_schedule,
-        {
-            "next_speaker": "turn",
-            "stop": "synthesize",
-            "yield_to_human": yield_target,  # 人在环时让位走 human_gate，否则收尾
-        },
-    )
-    g.add_edge("synthesize", END)
-    return g.compile(checkpointer=checkpointer)
+    """圆桌配方整图：编译 `ROUNDTABLE`(人在环) 或 `ROUNDTABLE_CONTINUOUS`(自动连续)。"""
+    deps = {
+        "assign": assign,
+        "generate": generate,
+        "persona_provider": persona_provider,
+        "extract": extract,
+        "pick": pick,
+        "compose": compose,
+        "assess": clarify_assess,  # clarify 节点形参名是 assess
+    }
+    recipe = ROUNDTABLE if human_in_loop else ROUNDTABLE_CONTINUOUS
+    return compile_recipe(recipe, checkpointer, deps=deps)

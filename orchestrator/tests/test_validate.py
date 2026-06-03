@@ -5,7 +5,16 @@
 
 from __future__ import annotations
 
+import pytest
+
+from app.recipes_builtin import AUTO, FANOUT, ROUNDTABLE, ROUNDTABLE_CONTINUOUS
 from app.recipes_validate import validate_recipe
+
+
+@pytest.mark.parametrize("recipe", [FANOUT, ROUNDTABLE, ROUNDTABLE_CONTINUOUS, AUTO])
+def test_builtin_recipes_are_valid(recipe):
+    """四个内置配方都必须过校验（环上有闸/needs 可达/必有 else）。"""
+    assert validate_recipe(recipe) == []
 
 
 def _good() -> dict:
@@ -76,7 +85,7 @@ def test_cycle_without_budget():
         ],
     }
     errs = validate_recipe(r)
-    assert any("不带预算闸的环" in m for m in errs)
+    assert any("无闸的环" in m for m in errs)
 
 
 def test_bad_when_field():

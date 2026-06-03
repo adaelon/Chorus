@@ -264,9 +264,12 @@
 - 做：`app/recipes_validate.py`——`validate_recipe(json)->list[str]`（收集全部人话错误，空=合法）：①needs 可达（must 数据流定点 ⊓=∩，处理环）②有 when 出边必有唯一 else ③去掉带 budget 的 router 后须无环 ④when 经 `check_cond` 静态校验；另含结构前置（id 唯一/use 注册/端点已知/可达/END 可达）。`recipes_cond.py` 加 `check_cond`（静态结构校验）。
 - 判据：`tests/test_validate.py`（7 条）好图过 + 断前置/缺 else/无闸环/坏 when/未知节点/未注册各报对应错；`.venv` 全量 **139 passed, 2 skipped**。
 
-**S5.4.1d 三配方改写成 JSON 等价替换 ⏳**
-- 做：圆桌/扇出/auto 三个 `build_*_recipe` 改为加载内置 JSON 配方经 `compile_recipe` 产出；删手写拓扑。**A3 端到端等价**。
-- 判据：既有全部端到端测试（roundtable/fanout/auto/relay）全绿。
+**S5.4.1d 三配方改写成 JSON 等价替换 ✅**
+- 做：新增 `app/recipes_builtin.py`（FANOUT/ROUNDTABLE/ROUNDTABLE_CONTINUOUS/AUTO 四份声明式 JSON）；`build_fanout/roundtable/auto_recipe` 改为组 deps（节点形参名，`clarify_assess→assess`）+ `compile_recipe(JSON)`，删手写拓扑，签名不变。**A3 端到端等价**。
+- 附带修正 1c：环检查把 **human 节点也算闸**（interrupt 暂停等人、不自主空转），否则扇出 `curate→curate` 自循环误报。
+- 判据：既有端到端（roundtable/fanout/auto/relay/service）**零改全绿** + 4 内置配方过 `validate`；`.venv` 全量 **143 passed, 2 skipped**。
+
+> **S5.4.1 编译器（a–d）完成** ✅：`when` 解释器 + `compile_recipe` + `validate_recipe` + 三配方=数据。配方真正变成可校验/可编译/可跑的 JSON。下一组 S5.4.2 配方库（存储 + 跑任意库内 DAG）。
 
 ### S5.4.2 配方库（存储 + 运行任意库内 DAG）
 
