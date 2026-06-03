@@ -228,9 +228,9 @@
 
 ### S5.4.0 引擎地基（原语收敛，A3 行为不变）
 
-**S5.4.0a 原语规格表 `PrimitiveSpec` + registry ⏳**
-- 做：新增 `app/recipes/spec.py`——`PrimitiveSpec{name,kind(transform|router|human),reads,writes,needs,emits,args,budget}` + `REGISTRY: dict[name,(spec,node_builder)]`，登记现有 ~9 个用户可见原语（`extract/generate` 不入）。**纯新增，不改任何节点行为**。
-- 判据：`pytest test_spec` — registry 自洽（每个 `needs⊆reads`、`router/human` 才有 `emits`、name 唯一）；既有测试全绿。
+**S5.4.0a 原语规格表 `PrimitiveSpec` + registry ✅**
+- 做：新增 `app/recipes_spec.py`（扁平，避与 `recipes.py` 冲突）——`PrimitiveSpec{name,kind,reads,writes,needs,emits,args,budget}` + `Primitive{spec,node}` + `REGISTRY`（登记 9 原语）+ `check_spec`/`validate_registry`。**纯新增，不改节点行为**。
+- 判据：`tests/test_spec.py`（10 条）registry 自洽 + check_spec 拒坏 spec；`.venv` 全量 **115 passed, 2 skipped**（A3）。
 
 **S5.4.0b 路由出节点：human_gate ⏳**
 - 做：`human_gate` 去掉 `Command(goto=...)`，改为只写 state delta + `next_decision∈{continue,end}`（interrupt 暂停留在节点）；`build_roundtable_recipe` 在 `human_gate` 后补一条条件边（continue→schedule / end→synthesize）。**A3 等价替换**。
