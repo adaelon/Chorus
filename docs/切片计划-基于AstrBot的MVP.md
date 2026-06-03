@@ -256,9 +256,9 @@
 - 做：`app/recipes_cond.py`（扁平）——`eval_cond(cond, state)->bool`，`cond={field,op,value}|{all:[...]}|{any:[...]}`（可嵌套），算子白名单 `== != > >= < <= in empty truthy`，字段限 `GroupState`。**数据非代码、无 eval**。
 - 判据：`tests/test_cond.py`（11 条）各算子 + all/any 嵌套 + 非法字段/算子/非 dict/坏复合报错；`.venv` 全量 **128 passed, 2 skipped**。
 
-**S5.4.1b `compile_recipe(json)->StateGraph` 直译 ⏳**
-- 做：`app/recipes/compile.py`——`nodes` 按 `use` 从 registry 取 node_builder→`add_node(id)`；无 `when` 边→`add_edge`；带 `when` 边按 `from` 归组→`add_conditional_edges`（读 state 跑 `eval_cond`，命中 `to`，无命中走 else 边）；START/END 直连。
-- 判据：`test_compile` — 一张最小手写 JSON 编译后 `ainvoke` 跑通（注入假节点离线）。
+**S5.4.1b `compile_recipe(json)->StateGraph` 直译 ✅**
+- 做：`app/recipes_compile.py`（扁平）——`nodes` 按 `use` 取 registry 节点、`inspect` 过滤注入 deps + 据 `spec.budget` 插闸→`add_node`；单条无 when 出边→`add_edge`；否则按 `from` 归组→`add_conditional_edges`（`eval_cond` 顺序求值、无 when 边作 else）；`START/END` 字符串→常量。`args` 暂不处理（spec.args 全 None，留 1c/run）。
+- 判据：`tests/test_compile.py`（4 条）最小 JSON 注入假节点 `ainvoke` 跑通 + 条件分流(next_decision) + 通用 when(turns_since_human) + 条件边直达 END + 未注册原语报错；`.venv` 全量 **132 passed, 2 skipped**。
 
 **S5.4.1c 编译期校验 ⏳**
 - 做：`validate_recipe(json)`——①每节点 `needs` 在所有到达路径上被上游 `writes`（或初始输入）覆盖；②有条件出边的节点必有一条 else；③每个环上至少一个带 `budget` 的 router；④`when.field` 合法。报人话错误（供 S5.4.3 画布复用）。
