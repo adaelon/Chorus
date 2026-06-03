@@ -232,9 +232,9 @@
 - 做：新增 `app/recipes_spec.py`（扁平，避与 `recipes.py` 冲突）——`PrimitiveSpec{name,kind,reads,writes,needs,emits,args,budget}` + `Primitive{spec,node}` + `REGISTRY`（登记 9 原语）+ `check_spec`/`validate_registry`。**纯新增，不改节点行为**。
 - 判据：`tests/test_spec.py`（10 条）registry 自洽 + check_spec 拒坏 spec；`.venv` 全量 **115 passed, 2 skipped**（A3）。
 
-**S5.4.0b 路由出节点：human_gate ⏳**
-- 做：`human_gate` 去掉 `Command(goto=...)`，改为只写 state delta + `next_decision∈{continue,end}`（interrupt 暂停留在节点）；`build_roundtable_recipe` 在 `human_gate` 后补一条条件边（continue→schedule / end→synthesize）。**A3 等价替换**。
-- 判据：`test_roundtable`/`test_relay` 全绿（行为不变）。
+**S5.4.0b 路由出节点：human_gate ✅**
+- 做：`human_gate` 去掉 `Command(goto=...)`/`destinations`，返回纯 dict delta + `next_decision∈{continue,end}`（interrupt 暂停留在节点）；`build_roundtable_recipe` 加 `_route_after_gate` 条件边（end→synthesize / 否则 schedule）。**A3 等价替换**。
+- 判据：`.venv` 全量 **115 passed, 2 skipped**；end/continue 两支由 test_human_gate 端到端覆盖。
 
 **S5.4.0c 路由出节点：curate_gate ⏳**
 - 做：`curate_interrupt_node`（更名 `curate_gate`）同样去 `Command(goto)`，改 delta + `next_decision∈{curate,synthesize}`；`build_fanout_recipe` 补条件边。**A3**。

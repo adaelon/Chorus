@@ -38,6 +38,11 @@ def _route_after_schedule(state: GroupState) -> str:
     return state.next_decision or "stop"
 
 
+def _route_after_gate(state: GroupState) -> str:
+    """条件边（S5.4.0b）：human_gate 落下的 next_decision——end→收尾 / 否则继续讨论。"""
+    return "synthesize" if state.next_decision == "end" else "schedule"
+
+
 def build_roundtable_recipe(
     checkpointer,
     *,
@@ -69,9 +74,14 @@ def build_roundtable_recipe(
     g.add_edge("frame", "schedule")
 
     if human_in_loop:
-        # destinations 含 synthesize：S3.6h 人手动"结束并总结"时 human_gate 直接收尾。
-        g.add_node("human_gate", human_gate, destinations=("schedule", "synthesize"))
+        # S5.4.0b：human_gate 只写 next_decision，跳转交条件边（continue→schedule / end→synthesize）。
+        g.add_node("human_gate", human_gate)
         g.add_edge("turn", "human_gate")  # 每轮发言后过打断窗口
+        g.add_conditional_edges(
+            "human_gate",
+            _route_after_gate,
+            {"schedule": "schedule", "synthesize": "synthesize"},
+        )
         yield_target = "human_gate"
     else:
         g.add_edge("turn", "schedule")
