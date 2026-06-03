@@ -78,10 +78,13 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { curate, inboundStream, listContacts, synthesize } from '../api/chorus'
 import { renderMd } from '../utils/markdown'
 
-const request = ref('便利店要不要在春节期间继续营业')
+const route = useRoute()
+// 主持人荐配方带过来的任务（?task=）优先回填，否则用默认需求占位
+const request = ref(route.query.task || '便利店要不要在春节期间继续营业')
 const contactItems = ref([]) // {title, value:id}
 const selectedContacts = ref([])
 const groupKey = ref('')

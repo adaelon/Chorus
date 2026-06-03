@@ -38,8 +38,19 @@
               <v-btn color="primary" :loading="picking" :disabled="!task.trim()" @click="recommend">
                 让主持人选
               </v-btn>
-              <span v-if="pickMsg" class="text-caption ml-3">{{ pickMsg }}</span>
+              <span v-if="pickErr" class="text-caption text-error ml-3">{{ pickErr }}</span>
             </div>
+
+            <!-- 荐配方结果：先展示主持人选择+理由，用户确认再带任务进入（不直接跳走）-->
+            <v-alert v-if="pick" type="info" variant="tonal" class="mt-3" density="comfortable">
+              <div class="text-subtitle-2 mb-1">
+                主持人建议：「{{ recipeName(pick.recipe) }}」
+              </div>
+              <div v-if="pick.reason" class="text-body-2 mb-3">{{ pick.reason }}</div>
+              <v-btn color="primary" variant="flat" size="small" @click="enter">
+                进入「{{ recipeName(pick.recipe) }}」→
+              </v-btn>
+            </v-alert>
           </v-card-text>
         </v-card>
       </v-col>
@@ -69,7 +80,8 @@ const router = useRouter()
 const health = ref('') // '' | 'ok' | 'down'
 const task = ref('')
 const picking = ref(false)
-const pickMsg = ref('')
+const pick = ref(null) // 荐配方结果 {recipe, reason}
+const pickErr = ref('')
 
 const recipes = [
   {
@@ -92,20 +104,29 @@ const recipes = [
 
 const go = (to) => router.push(to)
 const RECIPE_ROUTE = { roundtable: '/roundtable', fanout: '/curate' }
+const recipeName = (r) => (r === 'fanout' ? '扇出策展' : '圆桌')
 
 async function recommend() {
   picking.value = true
-  pickMsg.value = ''
+  pickErr.value = ''
+  pick.value = null
   try {
     const { recipe, reason } = await selectRecipe(task.value)
-    const name = recipe === 'fanout' ? '扇出策展' : '圆桌'
-    pickMsg.value = `主持人选了「${name}」${reason ? '：' + reason : ''}，正在进入…`
-    router.push(RECIPE_ROUTE[recipe] || '/roundtable')
+    pick.value = { recipe, reason } // 先展示选择+理由，不直接跳走
   } catch (e) {
-    pickMsg.value = '荐配方失败：' + String(e?.message || e)
+    pickErr.value = '荐配方失败：' + String(e?.message || e)
   } finally {
     picking.value = false
   }
+}
+
+// 用户确认后带任务进入目标配方页（task 经 query 回填，不丢需求）
+function enter() {
+  if (!pick.value) return
+  router.push({
+    path: RECIPE_ROUTE[pick.value.recipe] || '/roundtable',
+    query: { task: task.value },
+  })
 }
 
 async function ping() {

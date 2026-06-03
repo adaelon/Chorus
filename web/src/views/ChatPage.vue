@@ -114,10 +114,13 @@
 
 <script setup>
 import { onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { listContacts, roundtableResume, roundtableStream } from '../api/chorus'
 import { renderMd } from '../utils/markdown'
 
-const topic = ref('要不要给便利店做付费会员')
+const route = useRoute()
+// 主持人荐配方带过来的任务（?task=）优先回填，否则用默认议题占位
+const topic = ref(route.query.task || '要不要给便利店做付费会员')
 const contactItems = ref([]) // {title, value:id}
 const contactNames = ref({}) // id -> name
 const selectedContacts = ref([])

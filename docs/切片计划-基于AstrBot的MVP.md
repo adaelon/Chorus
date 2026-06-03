@@ -211,6 +211,16 @@
 - 不做：可视化自拼 DSL（更后）。
 - 判据：`pytest` — auto 配方对一个任务组出"先 Fanout 后 Speak 轮转再 Synthesize"的合法序列（注入假 planner）；步数闸到顶必停；每步原语结果确定可验（§B2）。
 
+**S5.1 修订（L2 荐配方收尾 bug，前端）✅**
+- 病：首页"让主持人选"选完**同步即跳转**——`pickMsg`（含理由）随页面卸载没机会显示；且没把任务带到目标页，目标页用硬编码默认议题，**用户需求丢失**。
+- 做：`recommend()` 不再选完即跳，先把 `{recipe,reason}` 渲染成结果卡（展示主持人建议+理由）+「进入」按钮；`enter()` 经 `query:{task}` 带任务跳转；`ChatPage`/`CuratePage` 挂载时 `route.query.task` 优先回填 `topic`/`request`。
+- 判据：`npm run build` 过；手动——选完看得到理由、进目标页议题已回填。
+
+**S5.3 L3 通电（auto 配方接到 service + web）⏳**（§6.13；S5.2 引擎已造好、`test_auto` 绿，本刀只接线）
+- 做：`_build_graphs` 加 `app.state.auto_graph = build_auto_recipe(..., planner=default_planner(model))`（`server.py` 注入真 planner）；加 `/auto/stream` 端点（复用 `_sse_from_events`/`iter_events`，auto 图无 human_gate，一气呵成跑到 END）；web 首页加第三张卡「自动（主持人现编）」→ 新页消费该流（展示主持人逐步调度 + 产出，无插话窗口）；(可选)`RECIPES` 加 `"auto"` 让 L2 也能在三者中选。
+- 不做：auto 图加人在环（AskHuman/Curate 暂停）；可视化自拼 DSL（→ S5.4）。
+- 判据：`pytest` — `/auto/stream` 端到端出 `framed→turn*→output`（注入假 planner/gen 离线）；既有测试仍绿（A3）。`npm run build` 过；手动跑通一场 auto。
+
 ---
 
 ## S6 发布（pip 安装即用，§6.15）
@@ -242,7 +252,7 @@ S1.6 ─→ S2.0(durable checkpointer) ; S2.1 → S2.2 → S2.3   │   S2.4 需
 S1.6 ─→ S3.0(interrupt 化扇出, 模型A) ──→ S3.4 复用同一 interrupt 机制
 S2.* ─→ S3.1 → S3.1b(点账本+投影器) → S3.1c(中立提点) → S3.2 → S3.3(验收) → S3.4 → S3.5 ; S3.6/S3.7 需前端基座(S1.7)
 S3(引擎) ─→ S4.1 → S4.2 → S4.3 → S4.4 ; S4.5 需 S1.7
-S3.6 + S4.4 ─→ S5.0(runtime/transport 分层, 统一驱动) → S5.1(L2 荐配方) → S5.2(L3 组原语)
+S3.6 + S4.4 ─→ S5.0(runtime/transport 分层, 统一驱动) → S5.1(L2 荐配方) → S5.2(L3 组原语, 引擎) → S5.3(L3 通电: service+web)
 S5(core 稳) ─→ S6.0(配置解耦+包骨架+CLI) → S6.1(打进前端 dist) → S6.2(PyPI 发布 + group_relay 独立分发)
 ```
 
