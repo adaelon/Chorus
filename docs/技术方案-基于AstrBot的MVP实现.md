@@ -324,11 +324,12 @@ class Message(SQLModel):     # 群历史(=短期记忆)
 **展开**：切片 S5.4.0a-e（引擎地基）/ S5.4.1a-d（编译器）/ S5.4.2a-b（配方库）/ S5.4.3a-d（卡片流画布）/ S5.5（L3 产出 DAG）。
 
 ### §6.17 会话历史 + 出错重试（复用 checkpointer）
-**决策**：历史与重试都建在 LangGraph checkpointer 上（state 已按 `group_key`=thread_id 持久）——历史=轻量 `Conversation` 索引表 + 从 checkpointer 读 `history/output`；重试=从最后 checkpoint 重跑挂起节点（`astream(None, cfg)`）。
+**决策**：历史与"继续/重试"都建在 LangGraph checkpointer 上（state 已按 `group_key`=thread_id 持久）——历史=轻量 `Conversation` 索引表 + 从 checkpointer 读 `history/output`；**继续/重试同一招**=按会话 `recipe_id` 取对应图、在同一 thread 上再进图（继续=带 `Command(resume=...)`；重试=`astream(None)` 重跑挂起节点）。
 **否决**：
 - 另存全量消息到 `Message` 表：与 checkpointer 重复、易不一致（checkpointer 已是 single source；列表才需索引表）。
+- 历史只读：未到 END 的会话（停在 human_gate / 没跑完）本就能续，只读太可惜。
 - 失败整场重来：丢已完成轮次、白烧 kimi 调用；checkpointer 能断点续。
-**命门**：`Conversation` 须存 `recipe_id`（重试要据此取对应图——默认 roundtable / 自定义 recompile；历史列表按用户要求**不显示**配方，但内部留）；重试前端要先清掉报错那一轮的半截气泡（节点会从头重跑、重新流式）。LangGraph 在节点抛错处的 checkpoint = 该节点前的最后成功超步，故 `None` 续跑 = 重试该节点（实现时需 verify）。
+**命门**：`Conversation` 须存 `recipe_id` → 共用件 `_graph_for(recipe_id)`（None→roundtable_graph / 自定义→recompile）供继续与重试取图（历史列表按用户要求**不显示**配方，但内部留）；`resumable` = `aget_state().next` 非空；重试前端要先清掉报错那轮的半截气泡（节点从头重跑、重新流式）。LangGraph 在节点抛错处的 checkpoint = 该节点前的最后成功超步，故 `None` 续跑 = 重试该节点（实现时需 verify）。
 **何时回头**：要跨会话搜索/分析消息时再建消息索引表。
 **展开**：切片 S5.7（会话历史）/ S5.8（出错重试）。
 

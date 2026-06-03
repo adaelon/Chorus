@@ -321,23 +321,24 @@
 
 ## S5.7 会话历史（复用 checkpointer，§6.17）
 
-> state 已按 group_key 持久在 checkpointer；只缺一个能"列出会话"的索引 + 一个只读渲染。不分配方（用户要求）。
+> state 已按 group_key 持久在 checkpointer；只缺"列出会话"的索引 + 渲染。**未到 END 的会话可续**（继续=重试 共用"按 recipe_id 取图续跑"，见 §6.17 命门）。不分配方（用户要求）。
 
-**S5.7a 会话索引表 + 读取端点 ⏳**
-- 做：`Conversation` 表（id=group_key, title, recipe_id, created_at, updated_at）；roundtable/`/recipe/run` 起场时 upsert 一条（title=request、recipe_id=配方或 None）；`GET /conversations`（近→远列表）；`GET /conversations/{key}`（用共享图 `aget_state` 读 GroupState 的 history/output/roster）。
-- 不做：消息另存表；前端；继续/重试（S5.8）。
-- 判据：`pytest` — 起一场后 /conversations 列得到、/conversations/{key} 返回含发言的 history（注入假节点离线）。
+**S5.7a 会话索引表 + 读端点 + 图解析 ⏳**
+- 做：`Conversation` 表（id=group_key, title, recipe_id, created_at, updated_at）；roundtable/`/recipe/run` 起场时 upsert（title=request、recipe_id=配方或 None）；`GET /conversations`（近→远）；`GET /conversations/{key}`（`aget_state` 读 history/output/roster + `resumable`=snap.next 非空）；**`_graph_for(recipe_id)` 图解析**（None→roundtable_graph / 自定义→`compile_recipe(库内 graph, saver, recipe_deps)`）——继续/重试共用。
+- 不做：消息另存表；前端。
+- 判据：`pytest` — 起一场后 /conversations 列得到、/conversations/{key} 返回含发言的 history + resumable 标志（注入假节点离线）。
 
-**S5.7b 历史页（只读渲染）⏳**
-- 做：`/history` 页列对话（标题+时间）→ 点开渲染气泡（复用 ChatPage 气泡渲染，只读）；导航加「历史」；api `listConversations/getConversation`。
-- 判据：`npm run build` 过；起几场后历史页能看到并打开（手动）。
+**S5.7b 历史页（渲染 + 继续未结束的）⏳**
+- 做：`/history` 页列对话（标题+时间）→ 点开渲染气泡（复用 ChatPage 气泡）；`resumable` 时给「继续」→ ChatPage 以现有 group_key 载入历史 + 续场（不重开新 thread）；导航加「历史」；api `listConversations/getConversation`；ChatPage 支持 `?conversation=key`（载历史、不重生 group_key、用 `/session/{key}/resume/stream`）。
+- 做（后端配套）：`POST /session/{key}/resume/stream`——`_graph_for` 取图 + `Command(resume=...)` 续场（通用版，自定义配方会话也能续；现有 `/roundtable/{key}/resume/stream` 仍保留）。
+- 判据：`npm run build` 过 + `pytest`（/session resume 端点续场）；起几场（含停在 human_gate 的）→ 历史页打开 → 继续能接着跑（手动）。
 
 ## S5.8 出错重试（断点续跑，§6.17）
 
-> 节点报错时 checkpointer 停在该节点前的最后成功超步；以 `None` 续跑 = 重试该节点（不整场重来）。
+> 节点报错时 checkpointer 停在该节点前的最后成功超步；以 `None` 续跑 = 重试该节点（不整场重来）。复用 S5.7a 的 `_graph_for`。
 
 **S5.8a 重试端点 ⏳**
-- 做：`POST /session/{key}/retry/stream`——按 `Conversation.recipe_id` 取对应图（默认 roundtable_graph / 自定义 recompile）→ `iter_events(graph, None, cfg)` 从最后 checkpoint 重跑挂起节点 → SSE。**先 verify** LangGraph `astream(None)` 的续跑语义（注入"首次抛错、二次成功"的假节点断言重试后跑通）。
+- 做：`POST /session/{key}/retry/stream`——`_graph_for(recipe_id)` 取图 → `iter_events(graph, None, cfg)` 从最后 checkpoint 重跑挂起节点 → SSE。**先 verify** LangGraph `astream(None)` 续跑语义（注入"首次抛错、二次成功"的假节点）。
 - 不做：前端。
 - 判据：`pytest` — 假 turn 首调抛错→第一段 SSE 出 error；retry 端点续跑→出 turn/output（断点续，不重跑已完成轮）。
 
