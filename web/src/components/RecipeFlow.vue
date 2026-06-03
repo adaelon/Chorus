@@ -32,38 +32,12 @@
 
 <script setup>
 import { computed } from 'vue'
+import { KIND_COLOR, KIND_ZH, humanizeWhen, labelOf } from '../utils/recipeLabels'
 
 const props = defineProps({
   graph: { type: Object, required: true }, // {nodes:[{id,use}], edges:[{from,to,when?}]}
   primitives: { type: Object, default: () => ({}) }, // name -> {kind, budget, ...}（来自 /primitives）
 })
-
-// 原语人话名（卡片标题）。
-const LABELS = {
-  clarify: '澄清需求',
-  frame: '分配维度',
-  fanout: '并行出候选',
-  turn: '轮流发言',
-  schedule: '主持人调度',
-  plan: '主持人现编',
-  human_gate: '真人插话窗口',
-  curate_gate: '人工策展',
-  synthesize: '主笔综合',
-}
-// next_decision 取值人话化。
-const DECISIONS = {
-  next_speaker: '有人发言',
-  yield_to_human: '让位真人',
-  stop: '停止',
-  continue: '继续讨论',
-  end: '结束收尾',
-  curate: '继续策展',
-  fanout: '并行候选',
-  speak: '指定发言',
-  synthesize: '收尾',
-}
-const KIND_ZH = { transform: '变换', router: '路由', human: '人在环' }
-const KIND_COLOR = { transform: 'primary', router: 'success', human: 'warning' }
 
 const nodes = computed(() => props.graph?.nodes || [])
 const edges = computed(() => props.graph?.edges || [])
@@ -88,7 +62,7 @@ const ordered = computed(() => {
 })
 const orderIndex = computed(() => Object.fromEntries(ordered.value.map((n, i) => [n.id, i])))
 
-const label = (n) => LABELS[n.use] || n.use
+const label = (n) => labelOf(n.use)
 const kind = (n) => props.primitives[n.use]?.kind || ''
 const kindZh = (n) => KIND_ZH[kind(n)] || '?'
 const kindColor = (n) => KIND_COLOR[kind(n)] || undefined
@@ -96,15 +70,6 @@ const kindClass = (n) => `k-${kind(n)}`
 const budgetOf = (n) => {
   const b = props.primitives[n.use]?.budget
   return b ? `${b.count} ≥ ${b.limit}` : null
-}
-
-function humanizeWhen(when) {
-  if (!when) return null
-  if (when.all) return when.all.map(humanizeWhen).join(' 且 ')
-  if (when.any) return when.any.map(humanizeWhen).join(' 或 ')
-  const { field, op, value } = when
-  if (field === 'next_decision' && op === '==') return DECISIONS[value] || value
-  return `${field} ${op} ${value}`
 }
 
 function branchesOf(id) {

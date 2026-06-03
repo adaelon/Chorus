@@ -27,7 +27,25 @@
 
       <v-col cols="12" sm="8" md="9">
         <div v-if="loading" class="text-medium-emphasis">加载中…</div>
-        <RecipeFlow v-else-if="current" :graph="current.graph" :primitives="primitives" />
+        <RecipeEditor
+          v-else-if="editing"
+          :initial-graph="draft.graph"
+          :initial-name="draft.name"
+          :recipe-id="draft.recipeId"
+          :primitives="primitives"
+          @saved="onSaved"
+          @cancel="editing = false"
+        />
+        <template v-else-if="current">
+          <div class="d-flex mb-2" style="gap: 8px">
+            <v-btn v-if="current.builtin" size="small" variant="tonal" @click="copyToDraft">
+              复制为可编辑草稿
+            </v-btn>
+            <v-btn v-else size="small" color="primary" variant="tonal" @click="editCurrent">编辑</v-btn>
+            <v-btn size="small" variant="text" @click="newDraft">＋ 新建空配方</v-btn>
+          </div>
+          <RecipeFlow :graph="current.graph" :primitives="primitives" />
+        </template>
         <div v-else class="text-medium-emphasis">从左侧选一个配方查看其工作流。</div>
       </v-col>
     </v-row>
@@ -37,6 +55,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import RecipeFlow from '../components/RecipeFlow.vue'
+import RecipeEditor from '../components/RecipeEditor.vue'
 import { getRecipe, listPrimitives, listRecipes } from '../api/chorus'
 
 const recipes = ref([]) // [{id,name,builtin}]
@@ -45,6 +64,29 @@ const selectedId = ref('')
 const current = ref(null) // {id,name,graph}
 const loading = ref(false)
 const error = ref('')
+
+const editing = ref(false)
+const draft = ref({ graph: null, name: '', recipeId: '' })
+
+const EMPTY_GRAPH = { recipe: '', version: 1, nodes: [], edges: [{ from: 'START', to: 'END' }] }
+
+function copyToDraft() {
+  draft.value = { graph: current.value.graph, name: current.value.name + ' 副本', recipeId: '' }
+  editing.value = true
+}
+function editCurrent() {
+  draft.value = { graph: current.value.graph, name: current.value.name, recipeId: current.value.id }
+  editing.value = true
+}
+function newDraft() {
+  draft.value = { graph: EMPTY_GRAPH, name: '', recipeId: '' }
+  editing.value = true
+}
+async function onSaved(r) {
+  editing.value = false
+  await load()
+  if (r?.id) select(r.id)
+}
 
 async function load() {
   try {
@@ -59,6 +101,7 @@ async function load() {
 
 async function select(id) {
   selectedId.value = id
+  editing.value = false
   loading.value = true
   error.value = ''
   try {

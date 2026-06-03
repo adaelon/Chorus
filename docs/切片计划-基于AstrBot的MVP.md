@@ -293,9 +293,10 @@
 - 做：`components/RecipeFlow.vue`（DFS 前序排竖向流；原语人话名 + kind 色条/chip + budget 闸徽标；出边逐条人话标注条件/循环↻）+ `views/RecipesPage.vue`（左列库内配方、右渲选中图，只读）+ api `listPrimitives/listRecipes/getRecipe` + 路由 `/recipes` + 导航「配方」。
 - 判据：`npm run build` 过（717 模块）；三内置配方渲染成可读卡片流（手动眼检）。
 
-**S5.4.3c 编辑：改参/增删卡 + 实时校验 ⏳**
-- 做：卡片参数可调（滑块/开关 ↔ `args`/`when.value`）、增删卡、连接；前端调 `validate` 实时标红（复用 S5.4.1c）。
-- 判据：改一张图存库再跑通（手动）；非法编辑实时拦截（手动）。
+**S5.4.3c 编辑：增删卡 + 改出边 + 实时校验 ✅**
+- 做：后端 `POST /recipe/validate{graph}→{errors}`（复用 1c，不落库）；前端 `RecipeEditor.vue`——加卡（原语库 chip）、删卡、改出边（目标下拉 + 条件下拉只暴露 router/human 的 emits 人话/「否则」，不露裸 when）、去抖实时校验标红、存库（create/update）；`RecipesPage` 接「复制为草稿/编辑/新建」+ `onSaved`；`humanizeWhen` 等抽到 `utils/recipeLabels.js` 与 RecipeFlow 共用。
+- 不做：节点级 args（spec.args 全 None）；通用 when 的裸 field/op/value 编辑（留高级模式）。
+- 判据：`npm run build` 过；后端 `tests/recipes/test_recipe_crud.py::test_validate_endpoint`；`.venv` 全量 **152 passed, 2 skipped**；改图存库再渲染（手动）。
 
 **S5.4.3d 三模板可改 + 存为新配方 ⏳**
 - 做：画布从三内置模板起步，"另存为"写库（S5.4.2 CRUD）；首页 RecipePicker 列出库内自定义配方。

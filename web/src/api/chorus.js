@@ -97,10 +97,15 @@ export const roundtableInterject = (group_key, text) =>
 export const selectRecipe = (task) =>
   brainApi.post('/recipe/select', { task }).then((r) => r.data)
 
-// L4 配方库（S5.4.2/3）：原语卡片库 / 库内配方 CRUD / 跑库内 DAG
+// L4 配方库（S5.4.2/3）：原语卡片库 / 库内配方 CRUD / 校验 / 跑库内 DAG
 export const listPrimitives = () => brainApi.get('/primitives').then((r) => r.data)
 export const listRecipes = () => brainApi.get('/recipes').then((r) => r.data)
 export const getRecipe = (id) => brainApi.get(`/recipes/${id}`).then((r) => r.data)
+export const createRecipe = (r) => brainApi.post('/recipes', r).then((x) => x.data)
+export const updateRecipe = (id, r) => brainApi.put(`/recipes/${id}`, r).then((x) => x.data)
+export const deleteRecipe = (id) => brainApi.delete(`/recipes/${id}`).then((x) => x.data)
+export const validateRecipe = (graph) =>
+  brainApi.post('/recipe/validate', { graph }).then((r) => r.data.errors)
 
 // Contact 注册表 CRUD（S2.4）
 export const listContacts = () => brainApi.get('/contacts').then((r) => r.data)

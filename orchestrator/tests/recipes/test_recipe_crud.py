@@ -66,6 +66,18 @@ def test_builtin_is_read_only(tmp_path):
         ).status_code == 403  # 内置不可改
 
 
+def test_validate_endpoint(tmp_path):
+    """S5.4.3c：/recipe/validate 返回人话错误列表（空=合法），不落库。"""
+    with TestClient(_app(tmp_path)) as client:
+        assert client.post("/recipe/validate", json={"graph": ROUNDTABLE}).json()["errors"] == []
+        bad = {"recipe": "b", "version": 1,
+               "nodes": [{"id": "frame", "use": "frame"}, {"id": "turn", "use": "turn"}],
+               "edges": [{"from": "START", "to": "frame"}, {"from": "frame", "to": "turn"},
+                         {"from": "turn", "to": "END"}]}
+        errs = client.post("/recipe/validate", json={"graph": bad}).json()["errors"]
+        assert any("needs" in m for m in errs)
+
+
 def test_create_rejects_invalid_graph(tmp_path):
     with TestClient(_app(tmp_path)) as client:
         bad = {"recipe": "bad", "version": 1,

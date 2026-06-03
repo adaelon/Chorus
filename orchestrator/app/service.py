@@ -144,6 +144,12 @@ class RecipeIn(BaseModel):
     graph: dict
 
 
+class RecipeValidateReq(BaseModel):
+    """L4 画布实时校验（S5.4.3c）：只校验 graph，不落库。"""
+
+    graph: dict
+
+
 def _cfg(group_key: str) -> dict:
     return {"configurable": {"thread_id": group_key}}
 
@@ -404,6 +410,11 @@ def create_app(
     async def list_primitives():
         """L4 画布卡片库（S5.4.3a，§6.16）：暴露 registry 每原语的机读契约。"""
         return [_primitive_dict(p) for p in REGISTRY.values()]
+
+    @app.post("/recipe/validate")
+    async def recipe_validate_ep(req: RecipeValidateReq):
+        """L4 画布实时校验（S5.4.3c）：返回人话错误列表（空=合法），复用 1c。"""
+        return {"errors": validate_recipe(req.graph)}
 
     @app.post("/recipe/select")
     async def recipe_select_ep(req: RecipeSelectReq):
