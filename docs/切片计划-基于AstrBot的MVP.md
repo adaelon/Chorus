@@ -285,9 +285,9 @@
 
 ### S5.4.3 卡片流画布（L4 对运营的门面）
 
-**S5.4.3a 原语→卡片库投影 API ⏳**
-- 做：`GET /primitives` 返回 registry 的 spec 列表（name/kind/args/可接性）给前端建卡片面板。
-- 判据：端点返回与 registry 一致（test）。
+**S5.4.3a 原语→卡片库投影 API ✅**
+- 做：`GET /primitives` 返回 registry 每原语机读契约（name/kind/reads/writes/needs/emits/budget/args）；`_primitive_dict` 投影。
+- 判据：`tests/service/test_primitives.py`（1 条）9 原语全在 + kind/needs/emits/budget 字段对；`.venv` 全量 **151 passed, 2 skipped**。
 
 **S5.4.3b 只读渲染：DAG JSON → 竖向卡片流 ⏳**（呼应"AI 搭的图也要看得懂"）
 - 做：前端把一张 recipe JSON 渲染成竖向卡片流（router/human 的分叉→卡上标注；环→"循环"卡），**先只读**。

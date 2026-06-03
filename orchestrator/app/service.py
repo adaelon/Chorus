@@ -45,6 +45,7 @@ from .nodes.plan import PlanFn
 from .nodes.schedule import PickFn
 from .nodes.synthesize import ComposeFn
 from .recipes import (
+    REGISTRY,
     RecipeSelector,
     build_fanout_recipe,
     build_roundtable_recipe,
@@ -145,6 +146,25 @@ class RecipeIn(BaseModel):
 
 def _cfg(group_key: str) -> dict:
     return {"configurable": {"thread_id": group_key}}
+
+
+def _primitive_dict(prim) -> dict:
+    """把一个原语的 PrimitiveSpec 投影成机读 dict（S5.4.3a，供 L4 画布建卡片/连线合法性）。"""
+    s = prim.spec
+    return {
+        "name": s.name,
+        "kind": s.kind,
+        "reads": list(s.reads),
+        "writes": list(s.writes),
+        "needs": list(s.needs),
+        "emits": list(s.emits),
+        "budget": (
+            {"count": s.budget.count, "limit": s.budget.limit, "reason": s.budget.reason}
+            if s.budget
+            else None
+        ),
+        "args": None,  # spec.args 全 None（args schema 留后）
+    }
 
 
 def _sse(obj: dict) -> str:
@@ -379,6 +399,11 @@ def create_app(
     @app.get("/health")
     async def health():
         return {"status": "ok"}
+
+    @app.get("/primitives")
+    async def list_primitives():
+        """L4 画布卡片库（S5.4.3a，§6.16）：暴露 registry 每原语的机读契约。"""
+        return [_primitive_dict(p) for p in REGISTRY.values()]
 
     @app.post("/recipe/select")
     async def recipe_select_ep(req: RecipeSelectReq):
