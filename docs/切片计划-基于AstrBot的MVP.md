@@ -289,9 +289,9 @@
 - 做：`GET /primitives` 返回 registry 每原语机读契约（name/kind/reads/writes/needs/emits/budget/args）；`_primitive_dict` 投影。
 - 判据：`tests/service/test_primitives.py`（1 条）9 原语全在 + kind/needs/emits/budget 字段对；`.venv` 全量 **151 passed, 2 skipped**。
 
-**S5.4.3b 只读渲染：DAG JSON → 竖向卡片流 ⏳**（呼应"AI 搭的图也要看得懂"）
-- 做：前端把一张 recipe JSON 渲染成竖向卡片流（router/human 的分叉→卡上标注；环→"循环"卡），**先只读**。
-- 判据：三内置配方各渲染成可读卡片流（手动）；`npm run build` 过。
+**S5.4.3b 只读渲染：DAG JSON → 竖向卡片流 ✅**（呼应"AI 搭的图也要看得懂"）
+- 做：`components/RecipeFlow.vue`（DFS 前序排竖向流；原语人话名 + kind 色条/chip + budget 闸徽标；出边逐条人话标注条件/循环↻）+ `views/RecipesPage.vue`（左列库内配方、右渲选中图，只读）+ api `listPrimitives/listRecipes/getRecipe` + 路由 `/recipes` + 导航「配方」。
+- 判据：`npm run build` 过（717 模块）；三内置配方渲染成可读卡片流（手动眼检）。
 
 **S5.4.3c 编辑：改参/增删卡 + 实时校验 ⏳**
 - 做：卡片参数可调（滑块/开关 ↔ `args`/`when.value`）、增删卡、连接；前端调 `validate` 实时标红（复用 S5.4.1c）。
