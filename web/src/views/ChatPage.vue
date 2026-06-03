@@ -2,7 +2,7 @@
   <v-container>
     <h2 class="mb-2">{{ recipeId ? '运行配方' : '圆桌' }}（ChatPage）</h2>
     <v-chip v-if="recipeId" size="small" color="primary" variant="tonal" class="mb-3">
-      配方：{{ recipeId }}
+      配方：{{ recipeName || recipeId }}
     </v-chip>
 
     <!-- 议题 + 到场好友 -->
@@ -118,13 +118,14 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { listContacts, recipeRunStream, roundtableResume, roundtableStream } from '../api/chorus'
+import { getRecipe, listContacts, recipeRunStream, roundtableResume, roundtableStream } from '../api/chorus'
 import { renderMd } from '../utils/markdown'
 
 const route = useRoute()
 // 主持人荐配方带过来的任务（?task=）优先回填，否则用默认议题占位
 const topic = ref(route.query.task || '要不要给便利店做付费会员')
 const recipeId = ref(route.query.recipe || '') // ?recipe=id → 用 /recipe/run 跑库内配方
+const recipeName = ref('')
 const contactItems = ref([]) // {title, value:id}
 const contactNames = ref({}) // id -> name
 const selectedContacts = ref([])
@@ -168,7 +169,16 @@ async function loadContacts() {
   }
 }
 
-onMounted(loadContacts)
+onMounted(async () => {
+  loadContacts()
+  if (recipeId.value) {
+    try {
+      recipeName.value = (await getRecipe(recipeId.value)).name
+    } catch {
+      /* 取不到名就回退显示 id */
+    }
+  }
+})
 
 // 进度反馈（S3.6g）：慢推理模型每步静默数十秒，status 让 UI 不像卡死。
 const STATUS_LABEL = {

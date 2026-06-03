@@ -18,7 +18,7 @@
           <div v-for="(b, j) in branchesOf(n.id)" :key="j" class="branch" :class="{ back: b.back }">
             <span v-if="b.back" class="loop">↻ 循环</span>
             <span v-if="b.cond" class="cond">当 {{ b.cond }}</span>
-            <span v-else class="cond muted">否则</span>
+            <span v-else-if="b.isElse" class="cond muted">否则</span>
             <span class="arrow">→</span>
             <span class="to">{{ b.toLabel }}</span>
           </div>
@@ -74,13 +74,14 @@ const budgetOf = (n) => {
 
 function branchesOf(id) {
   const here = orderIndex.value[id]
-  return edges.value
-    .filter((e) => e.from === id)
-    .map((e) => {
-      const back = e.to !== 'END' && (e.to === id || orderIndex.value[e.to] <= here)
-      const toLabel = e.to === 'END' ? '结束' : label(nodeById.value[e.to] || { use: e.to })
-      return { cond: humanizeWhen(e.when), to: e.to, toLabel, back }
-    })
+  const out = edges.value.filter((e) => e.from === id)
+  const hasWhen = out.some((e) => e.when) // 有条件分支时，无 when 的那条才算"否则"
+  return out.map((e) => {
+    const back = e.to !== 'END' && (e.to === id || orderIndex.value[e.to] <= here)
+    const toLabel = e.to === 'END' ? '结束' : label(nodeById.value[e.to] || { use: e.to })
+    const cond = humanizeWhen(e.when)
+    return { cond, isElse: !cond && hasWhen, to: e.to, toLabel, back }
+  })
 }
 </script>
 

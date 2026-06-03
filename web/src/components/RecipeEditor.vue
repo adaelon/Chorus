@@ -1,26 +1,19 @@
 <template>
   <div>
-    <!-- 标识 + 保存 -->
+    <!-- 名称 + 保存（id 自动生成，用户不用管）-->
     <div class="d-flex align-center mb-3" style="gap: 10px; flex-wrap: wrap">
       <v-text-field
-        v-model="rid"
-        label="配方 id"
-        density="compact"
-        variant="outlined"
-        hide-details
-        style="max-width: 180px"
-        :disabled="!!recipeId"
-      />
-      <v-text-field
         v-model="name"
-        label="名称"
+        label="配方名称"
+        placeholder="例：先发散再投票"
         density="compact"
         variant="outlined"
         hide-details
-        style="max-width: 220px"
+        style="max-width: 280px"
       />
       <v-btn color="primary" :disabled="!canSave" :loading="saving" @click="save">保存</v-btn>
       <v-btn variant="text" @click="$emit('cancel')">取消</v-btn>
+      <span v-if="!name.trim()" class="text-caption text-medium-emphasis">给配方起个名字才能保存</span>
     </div>
 
     <!-- 实时校验：整体问题留顶部，其余标在对应卡片上 -->
@@ -134,7 +127,8 @@ const graph = reactive(clone(props.initialGraph))
 graph.nodes ||= []
 graph.edges ||= []
 const name = ref(props.initialName)
-const rid = ref(props.recipeId || '')
+// id 是内部键：编辑已有用其 id；新建/复制草稿自动生成（用户只管名称）。
+const rid = props.recipeId || `rcp-${crypto.randomUUID().slice(0, 8)}`
 const errors = ref([])
 const saving = ref(false)
 const saveErr = ref('')
@@ -230,13 +224,13 @@ watch(
   { deep: true, immediate: true },
 )
 
-const canSave = computed(() => rid.value.trim() && !errors.value.length && !saving.value)
+const canSave = computed(() => name.value.trim() && !errors.value.length && !saving.value)
 
 function payload() {
   return {
-    id: rid.value.trim(),
-    name: name.value || rid.value.trim(),
-    graph: { ...graph, recipe: rid.value.trim() || graph.recipe, version: graph.version || 1 },
+    id: rid,
+    name: name.value.trim(),
+    graph: { ...graph, recipe: rid, version: graph.version || 1 },
   }
 }
 
