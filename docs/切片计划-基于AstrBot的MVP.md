@@ -328,10 +328,12 @@
 - 不做：消息另存表；前端。**`_graph_for` 挪到 S5.7b**（读 state 与图无关，续跑才需取对应图）。
 - 判据：`tests/service/test_conversations.py`（3 条）列到/含发言 history+resumable/近→远序/未知 404；`.venv` 全量 **160 passed, 2 skipped**。
 
-**S5.7b 历史页（渲染 + 继续未结束的）⏳**
-- 做：`/history` 页列对话（标题+时间）→ 点开渲染气泡（复用 ChatPage 气泡）；`resumable` 时给「继续」→ ChatPage 以现有 group_key 载入历史 + 续场（不重开新 thread）；导航加「历史」；api `listConversations/getConversation`；ChatPage 支持 `?conversation=key`（载历史、不重生 group_key、用 `/session/{key}/resume/stream`）。
-- 做（后端配套）：`POST /session/{key}/resume/stream`——`_graph_for` 取图 + `Command(resume=...)` 续场（通用版，自定义配方会话也能续；现有 `/roundtable/{key}/resume/stream` 仍保留）。
-- 判据：`npm run build` 过 + `pytest`（/session resume 端点续场）；起几场（含停在 human_gate 的）→ 历史页打开 → 继续能接着跑（手动）。
+**S5.7b 历史页（渲染 + 继续未结束的）✅**
+- 做（后端）：`_graph_for(app_state, recipe_id)`（空→roundtable_graph / 否则库内 recompile）+ `_resume_payload`（抽出 resume dict，roundtable resume 复用）；`POST /session/{key}/resume/stream`（按 `Conversation.recipe_id` 取图续场，自定义配方也能续）。
+- 做（前端）：`HistoryPage`（`/history` 列对话→点开进 ChatPage `?conversation=key`）+ 导航「历史」；ChatPage 支持 `?conversation=key`（`getConversation` 载历史气泡/roster/output、不重生 group_key、`resumable`→显示继续/插话/结束窗口、隐藏起场表单）；resume 全改走通用 `sessionResumeStream`；api `listConversations/getConversation/sessionResumeStream`。
+- 判据：`tests/service/test_conversations.py`（+2：/session resume 续默认圆桌 & 自定义配方）；`.venv` 全量 **162 passed, 2 skipped**；`npm run build` 过；历史页打开停在 human_gate 的会话→继续能接着跑（手动）。
+
+> **S5.7 会话历史（a–b）完成** ✅：历史可列、可看、未结束可续（继续=按 recipe_id 取图在同 thread 续场）。出错重试 S5.8 复用同一 `_graph_for`。
 
 ## S5.8 出错重试（断点续跑，§6.17）
 

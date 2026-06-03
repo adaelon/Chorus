@@ -93,6 +93,14 @@ export const roundtableResume = (group_key, resume, handlers) =>
 export const roundtableInterject = (group_key, text) =>
   brainApi.post(`/roundtable/${group_key}/interject`, { text }).then((r) => r.data)
 
+// 通用续场（S5.7b）：按会话 recipe_id 取对应图续；继续历史会话/自定义配方都走它。
+export const sessionResumeStream = (group_key, resume, handlers) =>
+  streamPost(`/session/${group_key}/resume/stream`, resume, handlers)
+
+// 会话历史（S5.7a）
+export const listConversations = () => brainApi.get('/conversations').then((r) => r.data)
+export const getConversation = (key) => brainApi.get(`/conversations/${key}`).then((r) => r.data)
+
 // L2 荐配方（S5.1）：按任务让主持人选 roundtable|fanout
 export const selectRecipe = (task) =>
   brainApi.post('/recipe/select', { task }).then((r) => r.data)

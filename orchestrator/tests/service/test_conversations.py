@@ -77,3 +77,26 @@ def test_conversation_order_recent_first(tmp_path):
 def test_unknown_conversation_404(tmp_path):
     with TestClient(_app(tmp_path)) as client:
         assert client.get("/conversations/nope").status_code == 404
+
+
+def test_session_resume_default_roundtable(tmp_path):
+    """S5.7b：通用 /session resume 续默认圆桌（recipe_id=""→roundtable_graph）。"""
+    with TestClient(_app(tmp_path)) as client:
+        client.post("/roundtable/stream", json={"group_key": "s1", "request": "议题", "roster": ["A", "B"]})
+        r = client.post("/session/s1/resume/stream", json={"interject": None})
+        assert r.status_code == 200
+        assert '"contact_id": "B"' in r.text  # 续到下一发言人
+
+
+def test_session_resume_custom_recipe(tmp_path):
+    """S5.7b：/session resume 按 recipe_id 取对应图续自定义/库内配方会话。"""
+    with TestClient(_app(tmp_path)) as client:
+        # 用库内 roundtable 配方经 /recipe/run 起场（recipe_id 落进 Conversation）→ 停在 human_gate
+        client.post(
+            "/recipe/run",
+            json={"recipe_id": "roundtable", "group_key": "s2", "request": "议题", "roster": ["A", "B"]},
+        )
+        assert client.get("/conversations/s2").json()["recipe_id"] == "roundtable"
+        r = client.post("/session/s2/resume/stream", json={"interject": None})
+        assert r.status_code == 200
+        assert '"contact_id": "B"' in r.text

@@ -310,6 +310,28 @@ async def _require_thread(graph, group_key: str) -> None:
         )
 
 
+def _resume_payload(req: "RoundtableResumeReq") -> dict:
+    """续场字段 → 非空 resume dict（clarify skip/answer；human_gate end/interject）。"""
+    if req.skip:
+        return {"skip": True}
+    if req.answer is not None:
+        return {"answer": req.answer}
+    if req.end:
+        return {"end": True}
+    return {"interject": req.interject}
+
+
+async def _graph_for(app_state, recipe_id: str):
+    """按会话 recipe_id 取对应图（S5.7b，继续/重试共用）：空→默认圆桌；否则库内配方重编译。"""
+    if not recipe_id:
+        return app_state.roundtable_graph
+    async with app_state.session_factory() as s:
+        rec = await s.get(Recipe, recipe_id)
+    if rec is None:
+        return app_state.roundtable_graph  # 配方已删 → 回退（仍能续 state）
+    return compile_recipe(rec.graph, app_state.saver, deps=app_state.recipe_deps)
+
+
 def create_app(
     *,
     checkpointer=None,
@@ -621,18 +643,26 @@ def create_app(
         graph = request.app.state.roundtable_graph
         cfg = _cfg(key)
         await _require_thread(graph, key)
-        if req.skip:
-            resume: dict = {"skip": True}
-        elif req.answer is not None:
-            resume = {"answer": req.answer}
-        elif req.end:
-            resume = {"end": True}  # 手动收尾 → human_gate 直接转 synthesize
-        else:
-            resume = {"interject": req.interject}  # 文本或 None（继续讨论）
         return _sse_from_events(
             graph,
-            Command(resume=resume),
+            Command(resume=_resume_payload(req)),
             cfg,
+            start_status=_RT_START_STATUS,
+            follow=_RT_FOLLOW_STATUS,
+        )
+
+    @app.post("/session/{key}/resume/stream")
+    async def session_resume_stream(key: str, req: RoundtableResumeReq, request: Request):
+        """通用续场（S5.7b）：按会话 recipe_id 取对应图，在同一 thread 上续场（自定义配方也能续）。"""
+        async with request.app.state.session_factory() as s:
+            conv = await s.get(Conversation, key)
+        recipe_id = conv.recipe_id if conv else ""
+        graph = await _graph_for(request.app.state, recipe_id)
+        await _require_thread(graph, key)
+        return _sse_from_events(
+            graph,
+            Command(resume=_resume_payload(req)),
+            _cfg(key),
             start_status=_RT_START_STATUS,
             follow=_RT_FOLLOW_STATUS,
         )

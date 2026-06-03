@@ -1,31 +1,37 @@
 <template>
   <v-container>
-    <h2 class="mb-2">{{ recipeId ? '运行配方' : '圆桌' }}（ChatPage）</h2>
+    <h2 class="mb-2">{{ loaded ? '历史会话' : recipeId ? '运行配方' : '圆桌' }}（ChatPage）</h2>
     <v-chip v-if="recipeId" size="small" color="primary" variant="tonal" class="mb-3">
       配方：{{ recipeName || recipeId }}
     </v-chip>
+    <div v-if="loaded" class="mb-3">
+      <span class="text-subtitle-1">{{ topic }}</span>
+      <span v-if="!paused" class="text-caption text-medium-emphasis ml-2">（已结束）</span>
+    </div>
 
-    <!-- 议题 + 到场好友 -->
-    <v-textarea v-model="topic" label="圆桌议题" rows="2" auto-grow variant="outlined" />
-    <v-select
-      v-model="selectedContacts"
-      :items="contactItems"
-      label="到场好友（从注册表选）"
-      multiple
-      chips
-      variant="outlined"
-      :hint="contactItems.length ? '' : '注册表为空——先去“好友”页新建'"
-      persistent-hint
-    />
-    <v-btn
-      color="primary"
-      :loading="loading"
-      :disabled="!topic || !selectedContacts.length || loading"
-      @click="start"
-    >
-      开始圆桌
-    </v-btn>
-    <span v-if="status" class="text-caption ml-3">{{ status }}</span>
+    <!-- 议题 + 到场好友（载入历史会话时隐藏起场表单）-->
+    <template v-if="!loaded">
+      <v-textarea v-model="topic" label="圆桌议题" rows="2" auto-grow variant="outlined" />
+      <v-select
+        v-model="selectedContacts"
+        :items="contactItems"
+        label="到场好友（从注册表选）"
+        multiple
+        chips
+        variant="outlined"
+        :hint="contactItems.length ? '' : '注册表为空——先去“好友”页新建'"
+        persistent-hint
+      />
+      <v-btn
+        color="primary"
+        :loading="loading"
+        :disabled="!topic || !selectedContacts.length || loading"
+        @click="start"
+      >
+        开始圆桌
+      </v-btn>
+      <span v-if="status" class="text-caption ml-3">{{ status }}</span>
+    </template>
 
     <v-alert v-if="error" type="error" class="mt-4" :text="error" />
 
@@ -118,13 +124,21 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { getRecipe, listContacts, recipeRunStream, roundtableResume, roundtableStream } from '../api/chorus'
+import {
+  getConversation,
+  getRecipe,
+  listContacts,
+  recipeRunStream,
+  roundtableStream,
+  sessionResumeStream,
+} from '../api/chorus'
 import { renderMd } from '../utils/markdown'
 
 const route = useRoute()
 // 主持人荐配方带过来的任务（?task=）优先回填，否则用默认议题占位
 const topic = ref(route.query.task || '要不要给便利店做付费会员')
 const recipeId = ref(route.query.recipe || '') // ?recipe=id → 用 /recipe/run 跑库内配方
+const convKey = ref(route.query.conversation || '') // ?conversation=key → 载入历史会话（看/续）
 const recipeName = ref('')
 const contactItems = ref([]) // {title, value:id}
 const contactNames = ref({}) // id -> name
@@ -138,6 +152,7 @@ const loading = ref(false)
 const error = ref('')
 const status = ref('')
 
+const loaded = ref(false) // 从历史载入的会话（隐藏起场表单）
 const paused = ref(false)
 const pauseType = ref(null) // 'human_gate' | 'clarify'
 const interjectText = ref('')
@@ -169,8 +184,37 @@ async function loadContacts() {
   }
 }
 
+async function loadConversation(key) {
+  groupKey.value = key
+  loaded.value = true
+  const c = await getConversation(key)
+  topic.value = c.title || ''
+  recipeId.value = c.recipe_id || ''
+  output.value = c.output || ''
+  dims.value = Object.fromEntries((c.roster || []).map((r) => [r.contact_id, r.dimension]))
+  messages.value = (c.history || []).map((m) => ({
+    sender_id: m.sender_id,
+    sender_kind: m.sender_kind,
+    text: m.text,
+    dimension: m.dimension,
+  }))
+  if (c.resumable) {
+    // 未结束（停在让位窗口）→ 显示继续/插话/结束
+    paused.value = true
+    pauseType.value = 'human_gate'
+  }
+}
+
 onMounted(async () => {
   loadContacts()
+  if (convKey.value) {
+    try {
+      await loadConversation(convKey.value)
+    } catch (e) {
+      error.value = '载入会话失败：' + String(e?.message || e)
+    }
+    return
+  }
   if (recipeId.value) {
     try {
       recipeName.value = (await getRecipe(recipeId.value)).name
@@ -281,18 +325,18 @@ async function start() {
 }
 
 const continueDiscussion = () =>
-  runLeg(() => roundtableResume(groupKey.value, { interject: null }, handlers))
+  runLeg(() => sessionResumeStream(groupKey.value, { interject: null }, handlers))
 
 // 手动收尾（S3.6h）：不靠预算闸/主持人判停，直接主笔综合。
 const endRoundtable = () =>
-  runLeg(() => roundtableResume(groupKey.value, { end: true }, handlers))
+  runLeg(() => sessionResumeStream(groupKey.value, { end: true }, handlers))
 
 async function interjectAndResume() {
   if (!interjectText.value) return
   const text = interjectText.value
   interjectText.value = ''
   messages.value.push({ sender_id: 'you', sender_kind: 'human', text })
-  await runLeg(() => roundtableResume(groupKey.value, { interject: text }, handlers))
+  await runLeg(() => sessionResumeStream(groupKey.value, { interject: text }, handlers))
 }
 
 async function answerClarify() {
@@ -300,11 +344,11 @@ async function answerClarify() {
   const text = clarifyAnswer.value
   clarifyAnswer.value = ''
   messages.value.push({ sender_id: 'you', sender_kind: 'human', text })
-  await runLeg(() => roundtableResume(groupKey.value, { answer: text }, handlers))
+  await runLeg(() => sessionResumeStream(groupKey.value, { answer: text }, handlers))
 }
 
 const skipClarify = () =>
-  runLeg(() => roundtableResume(groupKey.value, { skip: true }, handlers))
+  runLeg(() => sessionResumeStream(groupKey.value, { skip: true }, handlers))
 </script>
 
 <style scoped>
