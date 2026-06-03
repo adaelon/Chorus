@@ -236,9 +236,9 @@
 - 做：`human_gate` 去掉 `Command(goto=...)`/`destinations`，返回纯 dict delta + `next_decision∈{continue,end}`（interrupt 暂停留在节点）；`build_roundtable_recipe` 加 `_route_after_gate` 条件边（end→synthesize / 否则 schedule）。**A3 等价替换**。
 - 判据：`.venv` 全量 **115 passed, 2 skipped**；end/continue 两支由 test_human_gate 端到端覆盖。
 
-**S5.4.0c 路由出节点：curate_gate ⏳**
-- 做：`curate_interrupt_node`（更名 `curate_gate`）同样去 `Command(goto)`，改 delta + `next_decision∈{curate,synthesize}`；`build_fanout_recipe` 补条件边。**A3**。
-- 判据：`test_fanout`/`test_curate` 全绿。
+**S5.4.0c 路由出节点：curate_gate ✅**
+- 做：`curate_interrupt_node` 去 `Command(goto)`/`destinations`，返回 dict delta + `next_decision∈{curate,synthesize}`；`build_fanout_recipe` 加 `_route_after_curate` 条件边（含 **curate→curate 自循环回边**）。**A3**。（registry 名 `curate_gate`，节点函数名保留 `curate_interrupt_node`。）
+- 判据：`.venv` 全量 **115 passed, 2 skipped**；自循环由 test_interrupt 多轮策展覆盖。
 
 **S5.4.0d 预算闸声明式 ⏳**
 - 做：`plan`/`schedule` 的步数/预算闸从节点内硬编码改由 `spec.budget=(计数字段,上限字段)` 驱动；编译器/运行时据 spec 自动在 router 前插闸。**A3**。

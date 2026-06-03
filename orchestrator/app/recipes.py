@@ -25,6 +25,11 @@ from .nodes.synthesize import synthesize
 from .state import GroupState
 
 
+def _route_after_curate(state: GroupState) -> str:
+    """条件边（S5.4.0c）：curate 落下的 next_decision——curate=继续策展自循环 / 否则收尾。"""
+    return "curate" if state.next_decision == "curate" else "synthesize"
+
+
 def build_fanout_recipe(
     checkpointer,
     *,
@@ -47,12 +52,17 @@ def build_fanout_recipe(
             persona_provider=persona_provider,
             reputation_adjuster=reputation_adjuster,
         ),
-        destinations=("curate", "synthesize"),
     )
     g.add_node("synthesize", synthesize)
     g.add_edge(START, "clarify")
     g.add_edge("clarify", "frame")
     g.add_edge("frame", "fanout")
     g.add_edge("fanout", "curate")
+    # S5.4.0c：curate 只写 next_decision，跳转交条件边（curate→curate 自循环 / 否则收尾）。
+    g.add_conditional_edges(
+        "curate",
+        _route_after_curate,
+        {"curate": "curate", "synthesize": "synthesize"},
+    )
     g.add_edge("synthesize", END)
     return g.compile(checkpointer=checkpointer)

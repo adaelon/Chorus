@@ -15,7 +15,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from typing import Literal
 
 from langchain_openai import ChatOpenAI
-from langgraph.types import Command, interrupt
+from langgraph.types import interrupt
 from pydantic import BaseModel
 
 from ..llm import make_chat_model
@@ -127,18 +127,21 @@ async def curate_interrupt_node(
     generate: GenerateFn | None = None,
     persona_provider: PersonaProvider | None = None,
     reputation_adjuster: ReputationAdjuster | None = None,
-) -> Command:
+) -> dict:
     """图节点：暂停（interrupt）暴露当前候选给人工，按 resume 指令循环或转 synthesize。
 
     resume 协议（service 转发）：
       {"action": "curate", "commands": [...]} → apply 后回到本节点（再次 interrupt，多轮）
-      {"action": "synthesize"}                → goto synthesize（终端节点）
-    用 `Command(goto=...)` 自路由——引擎无 if/else 特例，S3.4 圆桌打断复用同一机制。
+      {"action": "synthesize"}                → 转 synthesize（终端节点）
+
+    **S5.4.0b/c 路由出节点（§6.16 A.3）**：interrupt（暂停）留在节点，跳转（goto）抽到边——
+    本节点只写 state delta + `next_decision∈{curate,synthesize}`，由配方条件边路由
+    （curate→curate 自循环 / synthesize→synthesize）。不再焊死拓扑，可被 L4 用户重新接线。
     """
     resume = interrupt(_curate_payload(state))
     action = resume.get("action", "synthesize") if isinstance(resume, dict) else "synthesize"
     if action != "curate":
-        return Command(goto="synthesize")
+        return {"next_decision": "synthesize"}
     commands = [parse_command(d) for d in (resume.get("commands") or [])]
     delta = await curate(
         state,
@@ -148,4 +151,4 @@ async def curate_interrupt_node(
         persona_provider=persona_provider,
         reputation_adjuster=reputation_adjuster,
     )
-    return Command(goto="curate", update=delta)
+    return {**delta, "next_decision": "curate"}
