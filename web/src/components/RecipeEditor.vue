@@ -23,12 +23,15 @@
       <v-btn variant="text" @click="$emit('cancel')">取消</v-btn>
     </div>
 
-    <!-- 实时校验 -->
-    <v-alert v-if="errors.length" type="warning" density="compact" class="mb-3">
-      <div class="text-subtitle-2 mb-1">该图还不能跑（{{ errors.length }} 个问题）：</div>
-      <div v-for="(e, i) in errors" :key="i" class="text-body-2">· {{ e }}</div>
-    </v-alert>
-    <v-alert v-else type="success" density="compact" variant="tonal" class="mb-3" text="图合法，可保存/运行" />
+    <!-- 实时校验：整体问题留顶部，其余标在对应卡片上 -->
+    <v-alert v-if="!errors.length" type="success" density="compact" variant="tonal" class="mb-3" text="图合法，可保存/运行" />
+    <template v-else>
+      <v-alert v-if="globalErrs.length" type="warning" density="compact" class="mb-2">
+        <div class="text-subtitle-2 mb-1">整体问题：</div>
+        <div v-for="(e, i) in globalErrs" :key="i" class="text-body-2">· {{ e }}</div>
+      </v-alert>
+      <div class="text-caption text-warning mb-3">共 {{ errors.length }} 个问题（其余已标在对应卡片上）。</div>
+    </template>
     <v-alert v-if="saveErr" type="error" density="compact" class="mb-3" :text="saveErr" />
 
     <!-- 加卡：原语卡片库 -->
@@ -67,7 +70,7 @@
 
     <!-- 每张卡 -->
     <template v-for="n in ordered" :key="n.id">
-      <v-card variant="outlined" class="node mb-2" :class="`k-${kindOf(n)}`">
+      <v-card variant="outlined" class="node mb-2" :class="[`k-${kindOf(n)}`, { 'has-err': nodeErrs(n.id).length }]">
         <div class="d-flex align-center">
           <span class="title">{{ labelOf(n.use) }}</span>
           <v-chip size="x-small" label class="ml-2" :color="kindColor(kindOf(n))">{{ kindZh(n) }}</v-chip>
@@ -86,7 +89,7 @@
               density="compact"
               variant="outlined"
               hide-details
-              style="max-width: 150px"
+              style="min-width: 150px; max-width: 200px"
               @update:model-value="(v) => setCond(e, v)"
             />
             <span v-else class="muted">→</span>
@@ -102,6 +105,11 @@
             <v-btn size="x-small" icon variant="text" @click="delEdge(e)">✕</v-btn>
           </div>
           <v-btn size="x-small" variant="text" @click="addEdge(n.id)">＋ 出边</v-btn>
+        </div>
+
+        <!-- 本卡的校验问题 -->
+        <div v-if="nodeErrs(n.id).length" class="node-errs">
+          <div v-for="(e, i) in nodeErrs(n.id)" :key="i">⚠ {{ e }}</div>
         </div>
       </v-card>
     </template>
@@ -158,6 +166,14 @@ const setCond = (e, v) => {
 }
 
 const edgesFrom = (id) => graph.edges.filter((e) => e.from === id)
+
+// 把人话错误归到提及它的节点 id 上（id 以非标识符字符为边界，避免子串误匹配）。
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const errMatchesNode = (err, id) => new RegExp(`(^|[^\\w-])${escapeRe(id)}([^\\w-]|$)`).test(err)
+const nodeErrs = (id) => errors.value.filter((e) => errMatchesNode(e, id))
+const globalErrs = computed(() =>
+  errors.value.filter((e) => !graph.nodes.some((n) => errMatchesNode(e, n.id))),
+)
 
 // DFS 前序排卡（与 RecipeFlow 一致）。
 const ordered = computed(() => {
@@ -251,6 +267,17 @@ async function save() {
 .node.k-router { border-left: 3px solid rgb(56, 142, 60); }
 .node.k-human { border-left: 3px solid rgb(245, 124, 0); }
 .node.k-transform { border-left: 3px solid rgb(25, 118, 210); }
+.node.has-err {
+  border-color: rgb(211, 47, 47);
+  background: rgba(211, 47, 47, 0.04);
+}
+.node-errs {
+  margin-top: 6px;
+  border-top: 1px dashed rgba(211, 47, 47, 0.4);
+  padding-top: 4px;
+  font-size: 0.78rem;
+  color: rgb(211, 47, 47);
+}
 .title { font-weight: 600; }
 .node-id { font-size: 0.72rem; }
 .edges-block { padding-left: 8px; }
