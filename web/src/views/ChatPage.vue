@@ -1,6 +1,9 @@
 <template>
   <v-container>
-    <h2 class="mb-4">圆桌（ChatPage）</h2>
+    <h2 class="mb-2">{{ recipeId ? '运行配方' : '圆桌' }}（ChatPage）</h2>
+    <v-chip v-if="recipeId" size="small" color="primary" variant="tonal" class="mb-3">
+      配方：{{ recipeId }}
+    </v-chip>
 
     <!-- 议题 + 到场好友 -->
     <v-textarea v-model="topic" label="圆桌议题" rows="2" auto-grow variant="outlined" />
@@ -115,12 +118,13 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { listContacts, roundtableResume, roundtableStream } from '../api/chorus'
+import { listContacts, recipeRunStream, roundtableResume, roundtableStream } from '../api/chorus'
 import { renderMd } from '../utils/markdown'
 
 const route = useRoute()
 // 主持人荐配方带过来的任务（?task=）优先回填，否则用默认议题占位
 const topic = ref(route.query.task || '要不要给便利店做付费会员')
+const recipeId = ref(route.query.recipe || '') // ?recipe=id → 用 /recipe/run 跑库内配方
 const contactItems = ref([]) // {title, value:id}
 const contactNames = ref({}) // id -> name
 const selectedContacts = ref([])
@@ -259,9 +263,11 @@ async function start() {
   output.value = ''
   current = null
   status.value = '主持人分配维度中…'
-  await runLeg(() =>
-    roundtableStream(groupKey.value, topic.value, selectedContacts.value, handlers),
-  )
+  // ?recipe= 时跑库内配方（/recipe/run）；否则默认圆桌。续场共用 resume 端点（共享 saver）。
+  const leg = recipeId.value
+    ? () => recipeRunStream(recipeId.value, groupKey.value, topic.value, selectedContacts.value, handlers)
+    : () => roundtableStream(groupKey.value, topic.value, selectedContacts.value, handlers)
+  await runLeg(leg)
 }
 
 const continueDiscussion = () =>

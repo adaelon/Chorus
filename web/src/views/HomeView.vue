@@ -56,6 +56,27 @@
       </v-col>
     </v-row>
 
+    <!-- 我的配方（S5.4.3d）：库内自定义配方，选一个直接开场（/recipe/run）-->
+    <v-row v-if="myRecipes.length" justify="center" class="mt-2">
+      <v-col cols="12" sm="11" md="10">
+        <div class="text-subtitle-2 mb-2">我的配方（自建/另存）：</div>
+        <v-chip
+          v-for="r in myRecipes"
+          :key="r.id"
+          class="mr-2 mb-2"
+          label
+          color="primary"
+          variant="outlined"
+          @click="goRecipe(r.id)"
+        >
+          ▶ {{ r.name || r.id }}
+        </v-chip>
+        <div class="text-caption text-medium-emphasis">
+          想新建/改配方？去「配方」页编辑。
+        </div>
+      </v-col>
+    </v-row>
+
     <!-- brainApi 连通指示（继承 S1.7）-->
     <div class="text-center mt-8">
       <v-chip
@@ -74,7 +95,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { brainApi } from '../api/brain'
-import { selectRecipe } from '../api/chorus'
+import { listRecipes, selectRecipe } from '../api/chorus'
 
 const router = useRouter()
 const health = ref('') // '' | 'ok' | 'down'
@@ -82,6 +103,9 @@ const task = ref('')
 const picking = ref(false)
 const pick = ref(null) // 荐配方结果 {recipe, reason}
 const pickErr = ref('')
+const myRecipes = ref([]) // 库内自定义配方（非内置）
+
+const goRecipe = (id) => router.push({ path: '/roundtable', query: { recipe: id } })
 
 const recipes = [
   {
@@ -138,7 +162,18 @@ async function ping() {
   }
 }
 
-onMounted(ping)
+async function loadMyRecipes() {
+  try {
+    myRecipes.value = (await listRecipes()).filter((r) => !r.builtin)
+  } catch {
+    myRecipes.value = []
+  }
+}
+
+onMounted(() => {
+  ping()
+  loadMyRecipes()
+})
 </script>
 
 <style scoped>

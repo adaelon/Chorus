@@ -298,9 +298,11 @@
 - 不做：节点级 args（spec.args 全 None）；通用 when 的裸 field/op/value 编辑（留高级模式）。
 - 判据：`npm run build` 过；后端 `tests/recipes/test_recipe_crud.py::test_validate_endpoint`；`.venv` 全量 **152 passed, 2 skipped**；改图存库再渲染（手动）。
 
-**S5.4.3d 三模板可改 + 存为新配方 ⏳**
-- 做：画布从三内置模板起步，"另存为"写库（S5.4.2 CRUD）；首页 RecipePicker 列出库内自定义配方。
-- 判据：从圆桌模板改出一张新配方、存库、首页可选、跑通（手动端到端）。
+**S5.4.3d 三模板可改 + 存为新配方 ✅**
+- 做：模板可改+另存（3c 的「复制为草稿→存库」已覆盖）；api `recipeRunStream`；`ChatPage` 支持 `?recipe=id`（用 `/recipe/run` 起场、续场仍走圆桌 resume，复用全部气泡/暂停逻辑）+ 配方 chip；`HomeView` 加「我的配方」区列库内自定义配方 → 选中 `goRecipe`→`/roundtable?recipe=id`。
+- 判据：`npm run build` 过；从圆桌模板改出新配方→存库→首页可选→开场跑通（手动端到端）。
+
+> **S5.4.3 卡片流画布（a–d）完成** ✅。**S5.4 配方升 L4 全部完成**：原语三态乐高 + 声明式 DAG 编译/校验 + 配方库 + 卡片流画布（看/编/存/跑）。下一步 S5.5：L3 让 AI 产出 DAG，复用这整条管线。
 
 ## S5.5 L3 真正通电：AI 产出 DAG（依赖 S5.4 全绿）🅿️ 待做
 

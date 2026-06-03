@@ -107,6 +107,11 @@ export const deleteRecipe = (id) => brainApi.delete(`/recipes/${id}`).then((x) =
 export const validateRecipe = (graph) =>
   brainApi.post('/recipe/validate', { graph }).then((r) => r.data.errors)
 
+// 跑库内配方（S5.4.2b）：SSE 流，handlers 同圆桌（framed/delta/turn/clarify/human_gate/output）。
+// 续场仍走 /roundtable/{key}/resume/stream（共享 saver）。
+export const recipeRunStream = (recipe_id, group_key, request, roster, handlers) =>
+  streamPost('/recipe/run', { recipe_id, group_key, request, roster }, handlers)
+
 // Contact 注册表 CRUD（S2.4）
 export const listContacts = () => brainApi.get('/contacts').then((r) => r.data)
 export const createContact = (c) => brainApi.post('/contacts', c).then((r) => r.data)
