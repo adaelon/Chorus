@@ -37,6 +37,26 @@ _OPS: dict[str, Any] = {
 }
 
 
+def check_cond(cond: Any) -> None:
+    """静态校验 cond 结构（不求值，无需 state）——字段/算子白名单、复合是列表。违反即 raise。
+
+    供编译期校验（S5.4.1c）检查所有边（含未求值分支）的 when 是否合法。
+    """
+    if not isinstance(cond, dict):
+        raise ValueError(f"条件必须是 dict，得到 {type(cond).__name__}")
+    for key in ("all", "any"):
+        if key in cond:
+            if not isinstance(cond[key], list):
+                raise ValueError(f"{key} 必须是条件列表")
+            for c in cond[key]:
+                check_cond(c)
+            return
+    if cond.get("field") not in STATE_FIELDS:
+        raise ValueError(f"未知 state 字段：{cond.get('field')!r}")
+    if cond.get("op") not in _OPS:
+        raise ValueError(f"未知算子：{cond.get('op')!r}")
+
+
 def eval_cond(cond: dict, state: GroupState) -> bool:
     """求值一条边条件（§6.16 C）。复合可嵌套；非法 cond/字段/算子 → ValueError。"""
     if not isinstance(cond, dict):

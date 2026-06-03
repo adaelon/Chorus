@@ -260,9 +260,9 @@
 - 做：`app/recipes_compile.py`（扁平）——`nodes` 按 `use` 取 registry 节点、`inspect` 过滤注入 deps + 据 `spec.budget` 插闸→`add_node`；单条无 when 出边→`add_edge`；否则按 `from` 归组→`add_conditional_edges`（`eval_cond` 顺序求值、无 when 边作 else）；`START/END` 字符串→常量。`args` 暂不处理（spec.args 全 None，留 1c/run）。
 - 判据：`tests/test_compile.py`（4 条）最小 JSON 注入假节点 `ainvoke` 跑通 + 条件分流(next_decision) + 通用 when(turns_since_human) + 条件边直达 END + 未注册原语报错；`.venv` 全量 **132 passed, 2 skipped**。
 
-**S5.4.1c 编译期校验 ⏳**
-- 做：`validate_recipe(json)`——①每节点 `needs` 在所有到达路径上被上游 `writes`（或初始输入）覆盖；②有条件出边的节点必有一条 else；③每个环上至少一个带 `budget` 的 router；④`when.field` 合法。报人话错误（供 S5.4.3 画布复用）。
-- 判据：`test_validate` — 坏图（断前置/缺 else/无闸环/坏字段）各报对应错；好图通过。
+**S5.4.1c 编译期校验 ✅**
+- 做：`app/recipes_validate.py`——`validate_recipe(json)->list[str]`（收集全部人话错误，空=合法）：①needs 可达（must 数据流定点 ⊓=∩，处理环）②有 when 出边必有唯一 else ③去掉带 budget 的 router 后须无环 ④when 经 `check_cond` 静态校验；另含结构前置（id 唯一/use 注册/端点已知/可达/END 可达）。`recipes_cond.py` 加 `check_cond`（静态结构校验）。
+- 判据：`tests/test_validate.py`（7 条）好图过 + 断前置/缺 else/无闸环/坏 when/未知节点/未注册各报对应错；`.venv` 全量 **139 passed, 2 skipped**。
 
 **S5.4.1d 三配方改写成 JSON 等价替换 ⏳**
 - 做：圆桌/扇出/auto 三个 `build_*_recipe` 改为加载内置 JSON 配方经 `compile_recipe` 产出；删手写拓扑。**A3 端到端等价**。
