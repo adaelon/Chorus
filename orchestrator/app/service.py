@@ -18,6 +18,7 @@ import asyncio
 import json
 from contextlib import asynccontextmanager
 from typing import Annotated, Union
+from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -46,10 +47,12 @@ from .nodes.schedule import PickFn
 from .nodes.synthesize import ComposeFn
 from .recipes import (
     REGISTRY,
+    RecipePlanner,
     RecipeSelector,
     build_fanout_recipe,
     build_roundtable_recipe,
     compile_recipe,
+    plan_recipe,
     select_recipe,
     validate_recipe,
 )
@@ -148,6 +151,13 @@ class RecipeValidateReq(BaseModel):
     """L4 画布实时校验（S5.4.3c）：只校验 graph，不落库。"""
 
     graph: dict
+
+
+class RecipeAutoReq(BaseModel):
+    """L3 让 AI 按任务搭一张配方（S5.5）。"""
+
+    task: str
+    roster: list[str] = []
 
 
 def _cfg(group_key: str) -> dict:
@@ -312,6 +322,7 @@ def create_app(
     planner: PlanFn | None = None,
     compose: ComposeFn | None = None,
     recipe_selector: RecipeSelector | None = None,
+    recipe_planner: RecipePlanner | None = None,
     bridge_url: str = "http://127.0.0.1:9876",
     db_path: str = "group_checkpoints.sqlite",
     registry_db_path: str = "chorus_registry.sqlite",
@@ -421,6 +432,21 @@ def create_app(
         """L2 荐配方（§6.13）：按任务返回 roundtable|fanout（未配置 selector→默认）。"""
         choice = await select_recipe(req.task, selector=recipe_selector)
         return {"recipe": choice.recipe, "reason": choice.reason}
+
+    @app.post("/recipe/auto")
+    async def recipe_auto_ep(req: RecipeAutoReq, request: Request):
+        """L3（S5.5）：AI 按任务产出一张 DAG，存进库（builtin=False）→ 可在画布看/改/跑。"""
+        name, graph = await plan_recipe(req.task, req.roster, planner=recipe_planner)
+        errs = validate_recipe(graph)
+        if errs:  # assemble 应恒合法；兜底防御
+            raise HTTPException(status_code=500, detail=errs)
+        rid = f"rcp-{uuid4().hex[:8]}"
+        graph = {**graph, "recipe": rid}
+        async with request.app.state.session_factory() as s:
+            obj = Recipe(id=rid, name=name, builtin=False, graph=graph)
+            s.add(obj)
+            await s.commit()
+            return obj
 
     @app.post("/recipe/run")
     async def recipe_run(req: RecipeRunReq, request: Request):

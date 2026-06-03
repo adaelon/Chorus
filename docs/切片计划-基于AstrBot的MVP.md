@@ -304,12 +304,14 @@
 
 > **S5.4.3 卡片流画布（a–d）完成** ✅。**S5.4 配方升 L4 全部完成**：原语三态乐高 + 声明式 DAG 编译/校验 + 配方库 + 卡片流画布（看/编/存/跑）。下一步 S5.5：L3 让 AI 产出 DAG，复用这整条管线。
 
-## S5.5 L3 真正通电：AI 产出 DAG（依赖 S5.4 全绿）🅿️ 待做
+## S5.5 L3 真正通电：AI 产出 DAG（依赖 S5.4）✅
 
-> 取代原 S5.3。L3 = planner 不再运行时即兴，而是**产出一张 recipe DAG**，复用 S5.4 的编译器跑、画布渲染成用户看得懂的卡片流。
-- 做：`plan_recipe(task,roster)->recipe_json`（AI 按任务组出一张合法 DAG，经 `validate` 兜底/重生）；`/recipe/auto {task}` 产图→可存库/可在画布展示/可跑；首页"让 AI 搭一个"入口。
-- 不做：AI 在画布上增量改图（更后）。
-- 判据：`pytest` — 给一个任务，`plan_recipe` 出的 JSON 过 `validate` 且端到端跑通（注入假 planner 离线）；产出的图能被 S5.4.3b 渲染成卡片流。
+> 取代原 S5.3。L3 = planner 不运行时即兴，而是**产出一张 recipe DAG 工件**，复用 S5.4 编译器跑、画布渲成卡片流、可存可改。§B2：AI 只做结构化高层选择，确定性 assemble 拼出保证合法的图。
+- 做：`recipes/plan_recipe.py`——`RecipePlan{mode,clarify,human_in_loop,reason}` + `default_recipe_planner`（LLM）+ `assemble_recipe`（据选择裁内置模板，恒合法）+ `plan_recipe(task,roster,*,planner)->(name,graph)`；`POST /recipe/auto {task,roster}` 产图→存库（builtin=False）→返回（可在画布看/改/跑）；create_app 加 `recipe_planner`，server 接 `default_recipe_planner`；首页「让 AI 搭一个配方」→ `/recipes?select=id`；配方页「▶ 运行此配方」。
+- 不做：AI 裸写 nodes/edges（§B2 不允许）；AI 在画布上增量改图；更丰富的分阶段组合（assemble 可扩展）。
+- 判据：`tests/recipes/test_plan_recipe.py`（5 条）圆桌/扇出/去clarify/无planner 各出合法图 + `/recipe/auto` 存库且经 `/recipe/run` 跑到 output；`.venv` 全量 **157 passed, 2 skipped**；`npm run build` 过。
+
+> **L1→L4 全线打通**：L1 用户选 / L2 主持人荐现成 / L3 AI 搭新图 / L4 用户卡片流自拼——四层都落到同一套「声明式 DAG + 编译器 + 配方库 + 卡片流画布」管线。
 
 ---
 

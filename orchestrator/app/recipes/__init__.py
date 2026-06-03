@@ -10,6 +10,7 @@ from .builtin import AUTO, FANOUT, ROUNDTABLE, ROUNDTABLE_CONTINUOUS
 from .compile import compile_recipe
 from .cond import check_cond, eval_cond
 from .fanout import build_fanout_recipe
+from .plan_recipe import RecipePlan, RecipePlanner, default_recipe_planner, plan_recipe
 from .roundtable import build_roundtable_recipe
 from .select import (
     DEFAULT_RECIPE,
@@ -45,4 +46,8 @@ __all__ = [
     "RecipeChoice",
     "RECIPES",
     "DEFAULT_RECIPE",
+    "plan_recipe",
+    "RecipePlan",
+    "RecipePlanner",
+    "default_recipe_planner",
 ]

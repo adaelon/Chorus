@@ -34,9 +34,12 @@
               hide-details
               @keyup.ctrl.enter="recommend"
             />
-            <div class="mt-2 d-flex align-center">
+            <div class="mt-2 d-flex align-center" style="gap: 8px; flex-wrap: wrap">
               <v-btn color="primary" :loading="picking" :disabled="!task.trim()" @click="recommend">
-                让主持人选
+                让主持人选现成的
+              </v-btn>
+              <v-btn color="secondary" variant="tonal" :loading="building" :disabled="!task.trim()" @click="build">
+                让 AI 搭一个配方
               </v-btn>
               <span v-if="pickErr" class="text-caption text-error ml-3">{{ pickErr }}</span>
             </div>
@@ -95,15 +98,30 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { brainApi } from '../api/brain'
-import { listRecipes, selectRecipe } from '../api/chorus'
+import { autoRecipe, listRecipes, selectRecipe } from '../api/chorus'
 
 const router = useRouter()
 const health = ref('') // '' | 'ok' | 'down'
 const task = ref('')
 const picking = ref(false)
+const building = ref(false)
 const pick = ref(null) // 荐配方结果 {recipe, reason}
 const pickErr = ref('')
 const myRecipes = ref([]) // 库内自定义配方（非内置）
+
+// L3：让 AI 按任务搭一张配方 → 去配方页看/改/跑（§6.16 S5.5）
+async function build() {
+  building.value = true
+  pickErr.value = ''
+  try {
+    const r = await autoRecipe(task.value)
+    router.push({ path: '/recipes', query: { select: r.id } })
+  } catch (e) {
+    pickErr.value = 'AI 搭配方失败：' + String(e?.message || e)
+  } finally {
+    building.value = false
+  }
+}
 
 const goRecipe = (id) => router.push({ path: '/roundtable', query: { recipe: id } })
 

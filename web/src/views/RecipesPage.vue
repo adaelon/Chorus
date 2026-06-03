@@ -37,7 +37,8 @@
           @cancel="editing = false"
         />
         <template v-else-if="current">
-          <div class="d-flex mb-2" style="gap: 8px">
+          <div class="d-flex mb-2" style="gap: 8px; flex-wrap: wrap">
+            <v-btn size="small" color="success" variant="tonal" @click="runCurrent">▶ 运行此配方</v-btn>
             <v-btn v-if="current.builtin" size="small" variant="tonal" @click="copyToDraft">
               复制为可编辑草稿
             </v-btn>
@@ -54,9 +55,14 @@
 
 <script setup>
 import { onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import RecipeFlow from '../components/RecipeFlow.vue'
 import RecipeEditor from '../components/RecipeEditor.vue'
 import { getRecipe, listPrimitives, listRecipes } from '../api/chorus'
+
+const route = useRoute()
+const router = useRouter()
+const runCurrent = () => router.push({ path: '/roundtable', query: { recipe: current.value.id } })
 
 const recipes = ref([]) // [{id,name,builtin}]
 const primitives = ref({}) // name -> spec
@@ -93,7 +99,10 @@ async function load() {
     const [rs, ps] = await Promise.all([listRecipes(), listPrimitives()])
     recipes.value = rs
     primitives.value = Object.fromEntries(ps.map((p) => [p.name, p]))
-    if (rs.length) select(rs[0].id)
+    // ?select=id（如 AI 刚搭好的）优先选中，否则选第一个
+    const want = route.query.select
+    const target = (want && rs.find((r) => r.id === want)?.id) || (rs[0] && rs[0].id)
+    if (target) select(target)
   } catch (e) {
     error.value = String(e?.message || e)
   }
