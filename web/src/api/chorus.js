@@ -100,6 +100,8 @@ export const sessionResumeStream = (group_key, resume, handlers) =>
 // 会话历史（S5.7a）
 export const listConversations = () => brainApi.get('/conversations').then((r) => r.data)
 export const getConversation = (key) => brainApi.get(`/conversations/${key}`).then((r) => r.data)
+export const deleteConversation = (key) =>
+  brainApi.delete(`/conversations/${key}`).then((r) => r.data)
 
 // L2 荐配方（S5.1）：按任务让主持人选 roundtable|fanout
 export const selectRecipe = (task) =>

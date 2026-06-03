@@ -823,4 +823,21 @@ def create_app(
             "resumable": bool(snap.next),
         }
 
+    @app.delete("/conversations/{key}")
+    async def delete_conversation(key: str, request: Request):
+        """删一场会话：删索引行 + 顺带清 checkpointer 线程状态（若 saver 支持）。"""
+        async with request.app.state.session_factory() as s:
+            obj = await s.get(Conversation, key)
+            if obj is None:
+                raise HTTPException(status_code=404, detail=f"conversation {key} not found")
+            await s.delete(obj)
+            await s.commit()
+        saver = request.app.state.saver
+        if hasattr(saver, "adelete_thread"):
+            try:
+                await saver.adelete_thread(key)  # 清 checkpoint（孤儿 state），失败不致命
+            except Exception:  # noqa: BLE001
+                pass
+        return {"deleted": key}
+
     return app

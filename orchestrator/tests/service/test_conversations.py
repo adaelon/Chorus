@@ -79,6 +79,17 @@ def test_unknown_conversation_404(tmp_path):
         assert client.get("/conversations/nope").status_code == 404
 
 
+def test_delete_conversation(tmp_path):
+    """S5.7c：删除会话——从列表消失、再读 404、重复删 404。"""
+    with TestClient(_app(tmp_path)) as client:
+        client.post("/roundtable/stream", json={"group_key": "d1", "request": "议题", "roster": ["A"]})
+        assert any(c["id"] == "d1" for c in client.get("/conversations").json())
+        assert client.delete("/conversations/d1").status_code == 200
+        assert not any(c["id"] == "d1" for c in client.get("/conversations").json())
+        assert client.get("/conversations/d1").status_code == 404
+        assert client.delete("/conversations/d1").status_code == 404
+
+
 def test_session_resume_default_roundtable(tmp_path):
     """S5.7b：通用 /session resume 续默认圆桌（recipe_id=""→roundtable_graph）。"""
     with TestClient(_app(tmp_path)) as client:
