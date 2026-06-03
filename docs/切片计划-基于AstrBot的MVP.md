@@ -216,10 +216,90 @@
 - 做：`recommend()` 不再选完即跳，先把 `{recipe,reason}` 渲染成结果卡（展示主持人建议+理由）+「进入」按钮；`enter()` 经 `query:{task}` 带任务跳转；`ChatPage`/`CuratePage` 挂载时 `route.query.task` 优先回填 `topic`/`request`。
 - 判据：`npm run build` 过；手动——选完看得到理由、进目标页议题已回填。
 
-**S5.3 L3 通电（auto 配方接到 service + web）⏳**（§6.13；S5.2 引擎已造好、`test_auto` 绿，本刀只接线）
-- 做：`_build_graphs` 加 `app.state.auto_graph = build_auto_recipe(..., planner=default_planner(model))`（`server.py` 注入真 planner）；加 `/auto/stream` 端点（复用 `_sse_from_events`/`iter_events`，auto 图无 human_gate，一气呵成跑到 END）；web 首页加第三张卡「自动（主持人现编）」→ 新页消费该流（展示主持人逐步调度 + 产出，无插话窗口）；(可选)`RECIPES` 加 `"auto"` 让 L2 也能在三者中选。
-- 不做：auto 图加人在环（AskHuman/Curate 暂停）；可视化自拼 DSL（→ S5.4）。
-- 判据：`pytest` — `/auto/stream` 端到端出 `framed→turn*→output`（注入假 planner/gen 离线）；既有测试仍绿（A3）。`npm run build` 过；手动跑通一场 auto。
+**S5.3 L3 通电（auto 运行时接线）🅿️ 待做（被 S5.4 取代/重定向）**（§6.13）
+- 原计划：把 S5.2 的 `build_auto_recipe`（运行时 PLAN⇄dispatch 即兴）接到 `/auto/stream` + web 第三张卡。
+- **为何待做**：auto 即兴流的产物**不可见、不可改、且和用户造的图是两套东西**。按 §6.16，L3 的真正形态是 **AI 产出一张 recipe DAG**，复用 L4 的编译器跑、画布渲染成卡片流——故 **L4（S5.4）是 L3 的地基，先 L4 后 L3**。本刀重定向为 **S5.5**（依赖 S5.4 全绿）。S5.2 引擎代码保留作运行时兜底。
+
+---
+
+## S5.4 配方升 L4：用户自造 DAG（§6.16，内核先行/UI 最后）
+
+> 原语收敛成带 spec 的三态乐高 → 图原生 JSON 内核 → 配方库 → 卡片流画布。每点都拆成独立可验的一刀。
+
+### S5.4.0 引擎地基（原语收敛，A3 行为不变）
+
+**S5.4.0a 原语规格表 `PrimitiveSpec` + registry ⏳**
+- 做：新增 `app/recipes/spec.py`——`PrimitiveSpec{name,kind(transform|router|human),reads,writes,needs,emits,args,budget}` + `REGISTRY: dict[name,(spec,node_builder)]`，登记现有 ~9 个用户可见原语（`extract/generate` 不入）。**纯新增，不改任何节点行为**。
+- 判据：`pytest test_spec` — registry 自洽（每个 `needs⊆reads`、`router/human` 才有 `emits`、name 唯一）；既有测试全绿。
+
+**S5.4.0b 路由出节点：human_gate ⏳**
+- 做：`human_gate` 去掉 `Command(goto=...)`，改为只写 state delta + `next_decision∈{continue,end}`（interrupt 暂停留在节点）；`build_roundtable_recipe` 在 `human_gate` 后补一条条件边（continue→schedule / end→synthesize）。**A3 等价替换**。
+- 判据：`test_roundtable`/`test_relay` 全绿（行为不变）。
+
+**S5.4.0c 路由出节点：curate_gate ⏳**
+- 做：`curate_interrupt_node`（更名 `curate_gate`）同样去 `Command(goto)`，改 delta + `next_decision∈{curate,synthesize}`；`build_fanout_recipe` 补条件边。**A3**。
+- 判据：`test_fanout`/`test_curate` 全绿。
+
+**S5.4.0d 预算闸声明式 ⏳**
+- 做：`plan`/`schedule` 的步数/预算闸从节点内硬编码改由 `spec.budget=(计数字段,上限字段)` 驱动；编译器/运行时据 spec 自动在 router 前插闸。**A3**。
+- 判据：`test_auto`（步数闸到顶必停）、`test_roundtable`（预算闸）全绿。
+
+**S5.4.0e 两 synthesize 合一 ⏳**
+- 做：`synthesize`/`synthesize_roundtable` 合成一个——按 `claims` 有无走圆桌主笔 / 扇出汇候选兜底。**A3**。
+- 判据：圆桌、扇出两路产出测试全绿。
+
+### S5.4.1 编译器（声明式 DAG → StateGraph）
+
+**S5.4.1a `when` 小解释器 ⏳**
+- 做：`app/recipes/cond.py`——`eval_cond(cond, state)->bool`，`cond={field,op,value}|{all:[...]}|{any:[...]}`，算子白名单 `== != > >= < <= in empty truthy`，字段限 `GroupState`。**数据非代码、无 eval**。
+- 判据：`test_cond` — 各算子 + all/any + 非法字段/算子报错，穷举。
+
+**S5.4.1b `compile_recipe(json)->StateGraph` 直译 ⏳**
+- 做：`app/recipes/compile.py`——`nodes` 按 `use` 从 registry 取 node_builder→`add_node(id)`；无 `when` 边→`add_edge`；带 `when` 边按 `from` 归组→`add_conditional_edges`（读 state 跑 `eval_cond`，命中 `to`，无命中走 else 边）；START/END 直连。
+- 判据：`test_compile` — 一张最小手写 JSON 编译后 `ainvoke` 跑通（注入假节点离线）。
+
+**S5.4.1c 编译期校验 ⏳**
+- 做：`validate_recipe(json)`——①每节点 `needs` 在所有到达路径上被上游 `writes`（或初始输入）覆盖；②有条件出边的节点必有一条 else；③每个环上至少一个带 `budget` 的 router；④`when.field` 合法。报人话错误（供 S5.4.3 画布复用）。
+- 判据：`test_validate` — 坏图（断前置/缺 else/无闸环/坏字段）各报对应错；好图通过。
+
+**S5.4.1d 三配方改写成 JSON 等价替换 ⏳**
+- 做：圆桌/扇出/auto 三个 `build_*_recipe` 改为加载内置 JSON 配方经 `compile_recipe` 产出；删手写拓扑。**A3 端到端等价**。
+- 判据：既有全部端到端测试（roundtable/fanout/auto/relay）全绿。
+
+### S5.4.2 配方库（存储 + 运行任意库内 DAG）
+
+**S5.4.2a recipe 表 + CRUD ⏳**
+- 做：注册表 db 加 `recipe(id,name,json,builtin)` + `/recipes` CRUD（仿 contacts）；三内置配方 seed 进库。
+- 判据：`test_recipe_crud` — 增删改查 + 内置不可删。
+
+**S5.4.2b `/recipe/run` 跑库内 DAG ⏳**
+- 做：`POST /recipe/run {recipe_id, group_key, request, roster}`——取 JSON→`validate`→`compile`→跑（复用 `_sse_from_events`/`iter_events` 流式）。
+- 判据：`test_recipe_run` — 按 id 取内置圆桌配方端到端流式跑通（离线假节点）。
+
+### S5.4.3 卡片流画布（L4 对运营的门面）
+
+**S5.4.3a 原语→卡片库投影 API ⏳**
+- 做：`GET /primitives` 返回 registry 的 spec 列表（name/kind/args/可接性）给前端建卡片面板。
+- 判据：端点返回与 registry 一致（test）。
+
+**S5.4.3b 只读渲染：DAG JSON → 竖向卡片流 ⏳**（呼应"AI 搭的图也要看得懂"）
+- 做：前端把一张 recipe JSON 渲染成竖向卡片流（router/human 的分叉→卡上标注；环→"循环"卡），**先只读**。
+- 判据：三内置配方各渲染成可读卡片流（手动）；`npm run build` 过。
+
+**S5.4.3c 编辑：改参/增删卡 + 实时校验 ⏳**
+- 做：卡片参数可调（滑块/开关 ↔ `args`/`when.value`）、增删卡、连接；前端调 `validate` 实时标红（复用 S5.4.1c）。
+- 判据：改一张图存库再跑通（手动）；非法编辑实时拦截（手动）。
+
+**S5.4.3d 三模板可改 + 存为新配方 ⏳**
+- 做：画布从三内置模板起步，"另存为"写库（S5.4.2 CRUD）；首页 RecipePicker 列出库内自定义配方。
+- 判据：从圆桌模板改出一张新配方、存库、首页可选、跑通（手动端到端）。
+
+## S5.5 L3 真正通电：AI 产出 DAG（依赖 S5.4 全绿）🅿️ 待做
+
+> 取代原 S5.3。L3 = planner 不再运行时即兴，而是**产出一张 recipe DAG**，复用 S5.4 的编译器跑、画布渲染成用户看得懂的卡片流。
+- 做：`plan_recipe(task,roster)->recipe_json`（AI 按任务组出一张合法 DAG，经 `validate` 兜底/重生）；`/recipe/auto {task}` 产图→可存库/可在画布展示/可跑；首页"让 AI 搭一个"入口。
+- 不做：AI 在画布上增量改图（更后）。
+- 判据：`pytest` — 给一个任务，`plan_recipe` 出的 JSON 过 `validate` 且端到端跑通（注入假 planner 离线）；产出的图能被 S5.4.3b 渲染成卡片流。
 
 ---
 
@@ -252,7 +332,9 @@ S1.6 ─→ S2.0(durable checkpointer) ; S2.1 → S2.2 → S2.3   │   S2.4 需
 S1.6 ─→ S3.0(interrupt 化扇出, 模型A) ──→ S3.4 复用同一 interrupt 机制
 S2.* ─→ S3.1 → S3.1b(点账本+投影器) → S3.1c(中立提点) → S3.2 → S3.3(验收) → S3.4 → S3.5 ; S3.6/S3.7 需前端基座(S1.7)
 S3(引擎) ─→ S4.1 → S4.2 → S4.3 → S4.4 ; S4.5 需 S1.7
-S3.6 + S4.4 ─→ S5.0(runtime/transport 分层, 统一驱动) → S5.1(L2 荐配方) → S5.2(L3 组原语, 引擎) → S5.3(L3 通电: service+web)
+S3.6 + S4.4 ─→ S5.0(runtime/transport 分层, 统一驱动) → S5.1(L2 荐配方) → S5.2(L3 组原语, 引擎)
+S5.2 ─→ S5.4.0(引擎地基) → S5.4.1(编译器) → S5.4.2(配方库) → S5.4.3(卡片流画布) → S5.5(L3 产出 DAG)
+   注：S5.3(L3 运行时接线) 待做，被 S5.4→S5.5 取代（先 L4 后 L3，§6.16）
 S5(core 稳) ─→ S6.0(配置解耦+包骨架+CLI) → S6.1(打进前端 dist) → S6.2(PyPI 发布 + group_relay 独立分发)
 ```
 
