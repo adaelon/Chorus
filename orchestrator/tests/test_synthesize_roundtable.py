@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from app.nodes.synthesize import synthesize_roundtable
+from app.nodes.synthesize import synthesize
 from app.state import Claim, GroupState, Msg
 
 
@@ -22,7 +22,7 @@ async def test_fallback_groups_claims_by_speaker():
             Claim(speaker_id="A", text="点A2", turn=3),
         ]
     )
-    out = await synthesize_roundtable(state)
+    out = await synthesize(state)
     output = out["output"]
     assert output  # 不再是空串（S3.3 遗留已补）
     # A 的两点归并在一起、带归属；B 单独一行
@@ -37,7 +37,7 @@ async def test_fallback_uses_ai_history_when_no_claims():
             Msg(sender_id="A", sender_kind="ai", text="A 的发言"),
         ]
     )
-    out = await synthesize_roundtable(state)
+    out = await synthesize(state)
     assert "A 的发言" in out["output"]
 
 
@@ -46,5 +46,5 @@ async def test_injected_composer_is_used():
         return f"主笔综合：{len(state.claims)} 个要点"
 
     state = _state(claims=[Claim(speaker_id="A", text="x", turn=1)])
-    out = await synthesize_roundtable(state, compose=fake_compose)
+    out = await synthesize(state, compose=fake_compose)
     assert out["output"] == "主笔综合：1 个要点"

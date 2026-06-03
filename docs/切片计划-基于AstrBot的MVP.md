@@ -244,9 +244,11 @@
 - 做：新增 `app/budget.py`——`Budget(count,limit,reason)` 描述符 + `budget_tripped`；`schedule`/`plan` 的闸从散落字面量改读注入的 `Budget`（默认各自 `SCHEDULE_BUDGET`/`PLAN_BUDGET`，直接调用照常受闸）；`spec.budget` 复用同一常量（单一来源，供编译器/画布读）。**A3**。
 - 判据：`.venv` 全量 **117 passed, 2 skipped**（test_schedule/test_auto 步数闸 + 2 新 budget 测试）。
 
-**S5.4.0e 两 synthesize 合一 ⏳**
-- 做：`synthesize`/`synthesize_roundtable` 合成一个——按 `claims` 有无走圆桌主笔 / 扇出汇候选兜底。**A3**。
-- 判据：圆桌、扇出两路产出测试全绿。
+**S5.4.0e 两 synthesize 合一 ✅**
+- 做：`synthesize`/`synthesize_roundtable` 合成一个 `synthesize(state,*,compose=None)`——分流：有 compose→主笔 / 有候选且无 claims→汇候选 / 否则兜底归并；三配方与 registry 改用统一节点。**A3**。
+- 判据：`.venv` 全量 **117 passed, 2 skipped**（圆桌主笔/兜底/ai 史 + 扇出汇候选 + auto 全绿）。
+
+> **S5.4.0 引擎地基（a–e）完成** ✅：原语已收敛成带 spec 的三态乐高——只写 state、路由全在边、闸声明式、synthesize 合一。下一步 S5.4.1 编译器起用这份 registry。
 
 ### S5.4.1 编译器（声明式 DAG → StateGraph）
 

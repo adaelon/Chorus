@@ -1,10 +1,13 @@
-"""SYNTHESIZE 节点——把一场讨论汇成一份产出。
+"""SYNTHESIZE 节点——把一场讨论汇成一份产出（S5.4.0e 两变体合一）。
 
-两个变体，分属两种配方：
-  `synthesize`（扇出，S1.6）——汇 picked/candidates（人工策展过的候选）。
-  `synthesize_roundtable`（圆桌，S3.6b）——圆桌无 candidates/picked，改从**点账本 claims**
-    （远场带归属的主张）+ 近场 history 主笔综合。`compose` 可注入：默认 `default_composer`
-    走 LLM 主笔；为 None 时确定性兜底（按 speaker 归并 claims），离线测试/未配置不打扰。
+一个统一节点 `synthesize(state, *, compose=None)`，按状态分流（§6.16 A.2）：
+  1) 有主笔 `compose`（圆桌/auto/relay 注入）→ LLM 主笔综合点账本 + 近场 history。
+  2) 有候选/选中且**无 claims**（扇出：无人发言成点）→ 确定性汇 picked/candidates。
+  3) 其余（圆桌 compose=None）→ 确定性兜底 `_fallback_compose`（按 speaker 归并 claims，
+     空账本退化为 ai 发言原文，再空则空串）。
+分流读 state（claims/picked/candidates）+ 注入的 compose，故扇出/圆桌/auto 各得其所，
+加配方不必再各配一个 SYNTHESIZE 变体。`compose` 默认 `default_composer`（LLM），离线测试/
+未配置走兜底不打扰。
 """
 
 from __future__ import annotations
@@ -16,12 +19,6 @@ from langchain_openai import ChatOpenAI
 
 from ..llm import robust_ainvoke
 from ..state import GroupState
-
-
-async def synthesize(state: GroupState) -> dict:
-    items = state.picked or state.candidates
-    lines = [f"- [{c.contact_id}] {c.text}" for c in items]
-    return {"output": "\n".join(lines)}
 
 
 # 圆桌主笔：(state) -> 综合产出文本。可注入以离线测试；None 时走确定性兜底。
@@ -65,10 +62,11 @@ def default_composer(model: ChatOpenAI) -> ComposeFn:
     return compose
 
 
-async def synthesize_roundtable(
-    state: GroupState, *, compose: ComposeFn | None = None
-) -> dict:
-    """圆桌终端节点：主笔综合点账本/history。compose=None → 确定性兜底（不碰 LLM）。"""
-    if compose is None:
-        return {"output": _fallback_compose(state)}
-    return {"output": await compose(state)}
+async def synthesize(state: GroupState, *, compose: ComposeFn | None = None) -> dict:
+    """统一终端节点：主笔综合 / 确定性汇候选 / 兜底归并（分流见模块 docstring）。"""
+    if compose is not None:
+        return {"output": await compose(state)}
+    items = state.picked or state.candidates
+    if items and not state.claims:  # 扇出：有候选且无 claims → 确定性汇候选
+        return {"output": "\n".join(f"- [{c.contact_id}] {c.text}" for c in items)}
+    return {"output": _fallback_compose(state)}  # 圆桌/auto 兜底：claims 归并/ai 史/空

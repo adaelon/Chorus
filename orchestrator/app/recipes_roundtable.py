@@ -28,7 +28,7 @@ from .nodes.frame import AssignFn, frame
 from .nodes.generate import GenerateFn, PersonaProvider
 from .nodes.human import human_gate
 from .nodes.schedule import PickFn, schedule
-from .nodes.synthesize import ComposeFn, synthesize_roundtable
+from .nodes.synthesize import ComposeFn, synthesize
 from .nodes.turn import turn
 from .state import GroupState
 
@@ -68,7 +68,7 @@ def build_roundtable_recipe(
         "turn",
         partial(turn, generate=generate, persona_provider=persona_provider, extract=extract),
     )
-    g.add_node("synthesize", partial(synthesize_roundtable, compose=compose))
+    g.add_node("synthesize", partial(synthesize, compose=compose))
     g.add_edge(START, "clarify")
     g.add_edge("clarify", "frame")
     g.add_edge("frame", "schedule")

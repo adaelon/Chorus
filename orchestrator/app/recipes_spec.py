@@ -29,7 +29,7 @@ from .nodes.frame import frame
 from .nodes.human import human_gate
 from .nodes.plan import PLAN_BUDGET, plan
 from .nodes.schedule import SCHEDULE_BUDGET, schedule
-from .nodes.synthesize import synthesize_roundtable
+from .nodes.synthesize import synthesize
 from .nodes.turn import turn
 from .state import GroupState
 
@@ -137,12 +137,12 @@ REGISTRY: dict[str, Primitive] = {
         emits=("curate", "synthesize"),  # 目标契约；路由出节点在 S5.4.0c
     ),
     "synthesize": _p(
-        synthesize_roundtable,
+        synthesize,
         name="synthesize",
         kind="transform",
         reads=("claims", "history", "picked", "candidates"),
         writes=("output",),
-    ),  # 两 synthesize 合一在 S5.4.0e；本刀指向更通用的圆桌主笔（claims 空时兜底）
+    ),  # S5.4.0e 已合一：按 compose/claims/candidates 分流（圆桌主笔 / 扇出汇候选 / 兜底）
 }
 
 
