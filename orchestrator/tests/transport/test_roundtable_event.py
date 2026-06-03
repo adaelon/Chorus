@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from app.runtime import Delta, Framed, Interrupt, TurnDone, to_event
+from app.transport.runtime import Delta, Framed, Interrupt, TurnDone, to_event
 
 
 class _Chunk:

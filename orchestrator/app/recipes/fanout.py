@@ -11,12 +11,12 @@ SYNTHESIZE 是终端节点。本函数只负责把注入的 LLM 依赖组成 dep
 
 from __future__ import annotations
 
-from .nodes.clarify import ClarifyFn
-from .nodes.curate import ReputationAdjuster
-from .nodes.frame import AssignFn
-from .nodes.generate import GenerateFn, PersonaProvider
-from .recipes_builtin import FANOUT
-from .recipes_compile import compile_recipe
+from ..nodes.clarify import ClarifyFn
+from ..nodes.curate import ReputationAdjuster
+from ..nodes.frame import AssignFn
+from ..nodes.generate import GenerateFn, PersonaProvider
+from .builtin import FANOUT
+from .compile import compile_recipe
 
 
 def build_fanout_recipe(

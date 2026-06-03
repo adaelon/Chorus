@@ -11,8 +11,8 @@ import asyncio
 from langgraph.checkpoint.memory import MemorySaver
 
 from app.nodes.schedule import NextSpeaker
-from app.recipes_roundtable import build_roundtable_recipe
-from app.relay import RelayDriver, canonical_thread
+from app.recipes.roundtable import build_roundtable_recipe
+from app.transport.relay import RelayDriver, canonical_thread
 from app.state import AgentSlot, Candidate, Claim, GroupState, Msg
 
 

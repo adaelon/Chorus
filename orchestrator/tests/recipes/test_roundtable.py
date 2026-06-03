@@ -10,7 +10,7 @@ from __future__ import annotations
 from langgraph.checkpoint.memory import MemorySaver
 
 from app.nodes.schedule import NextSpeaker
-from app.recipes_roundtable import build_roundtable_recipe
+from app.recipes.roundtable import build_roundtable_recipe
 from app.state import AgentSlot, Candidate, Claim, GroupState, Msg
 
 

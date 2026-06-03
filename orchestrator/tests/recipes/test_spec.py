@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 
 from app.budget import Budget, budget_tripped
-from app.recipes_spec import REGISTRY, PrimitiveSpec, check_spec, validate_registry
+from app.recipes.spec import REGISTRY, PrimitiveSpec, check_spec, validate_registry
 from app.state import AgentSlot, GroupState, Msg
 
 

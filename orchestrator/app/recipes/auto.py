@@ -18,12 +18,12 @@ AskHuman/Curate（人在环原语）可扩展（registry 加成员 + 配方加 n
 
 from __future__ import annotations
 
-from .nodes.frame import AssignFn
-from .nodes.generate import GenerateFn, PersonaProvider
-from .nodes.plan import PlanFn
-from .nodes.synthesize import ComposeFn
-from .recipes_builtin import AUTO
-from .recipes_compile import compile_recipe
+from ..nodes.frame import AssignFn
+from ..nodes.generate import GenerateFn, PersonaProvider
+from ..nodes.plan import PlanFn
+from ..nodes.synthesize import ComposeFn
+from .builtin import AUTO
+from .compile import compile_recipe
 
 
 def build_auto_recipe(

@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.recipes_builtin import AUTO, FANOUT, ROUNDTABLE, ROUNDTABLE_CONTINUOUS
-from app.recipes_validate import validate_recipe
+from app.recipes.builtin import AUTO, FANOUT, ROUNDTABLE, ROUNDTABLE_CONTINUOUS
+from app.recipes.validate import validate_recipe
 
 
 @pytest.mark.parametrize("recipe", [FANOUT, ROUNDTABLE, ROUNDTABLE_CONTINUOUS, AUTO])

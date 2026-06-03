@@ -15,7 +15,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
-from .structured import structured_invoke
+from ..structured import structured_invoke
 
 RECIPES = ("roundtable", "fanout")
 DEFAULT_RECIPE = "roundtable"

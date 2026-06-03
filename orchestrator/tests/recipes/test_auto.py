@@ -10,7 +10,7 @@ from __future__ import annotations
 from langgraph.checkpoint.memory import MemorySaver
 
 from app.nodes.plan import Fanout, Speak, Synthesize
-from app.recipes_auto import build_auto_recipe
+from app.recipes.auto import build_auto_recipe
 from app.state import AgentSlot, Candidate, Claim, GroupState, Msg
 
 

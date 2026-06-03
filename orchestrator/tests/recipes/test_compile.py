@@ -10,7 +10,7 @@ import pytest
 from langgraph.checkpoint.memory import MemorySaver
 
 from app.nodes.schedule import NextSpeaker
-from app.recipes_compile import compile_recipe
+from app.recipes.compile import compile_recipe
 from app.state import AgentSlot, Candidate, Claim, GroupState, Msg
 
 

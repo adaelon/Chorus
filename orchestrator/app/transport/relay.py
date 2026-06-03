@@ -20,7 +20,7 @@ from collections.abc import Awaitable, Callable
 from langgraph.types import Command
 
 from .runtime import TurnDone, iter_events
-from .state import AgentSlot, Msg
+from ..state import AgentSlot, Msg
 
 logger = logging.getLogger("chorus.relay")
 

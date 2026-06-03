@@ -19,7 +19,7 @@ from __future__ import annotations
 import operator
 from typing import Any
 
-from .state import GroupState
+from ..state import GroupState
 
 STATE_FIELDS: frozenset[str] = frozenset(GroupState.model_fields)
 

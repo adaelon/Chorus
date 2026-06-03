@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.recipes_cond import eval_cond
+from app.recipes.cond import eval_cond
 from app.state import AgentSlot, GroupState, Msg
 
 

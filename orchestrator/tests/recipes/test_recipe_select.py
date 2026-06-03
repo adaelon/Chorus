@@ -7,7 +7,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from langchain_core.messages import AIMessageChunk
 
-from app.recipe_select import RecipeChoice, default_recipe_selector, select_recipe
+from app.recipes.select import RecipeChoice, default_recipe_selector, select_recipe
 from app.service import create_app
 
 

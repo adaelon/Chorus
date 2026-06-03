@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from sqlmodel import select
 
-from ..recipes_builtin import AUTO, FANOUT, ROUNDTABLE, ROUNDTABLE_CONTINUOUS
+from ..recipes.builtin import AUTO, FANOUT, ROUNDTABLE, ROUNDTABLE_CONTINUOUS
 from .models import Contact, Recipe
 
 # 内置配方（S5.4.2a）：id = graph["recipe"] slug，启动 seed 进库、内置不可删。

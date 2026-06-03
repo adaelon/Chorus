@@ -16,14 +16,14 @@
 
 from __future__ import annotations
 
-from .nodes.clarify import ClarifyFn
-from .nodes.extract import ClaimExtractor
-from .nodes.frame import AssignFn
-from .nodes.generate import GenerateFn, PersonaProvider
-from .nodes.schedule import PickFn
-from .nodes.synthesize import ComposeFn
-from .recipes_builtin import ROUNDTABLE, ROUNDTABLE_CONTINUOUS
-from .recipes_compile import compile_recipe
+from ..nodes.clarify import ClarifyFn
+from ..nodes.extract import ClaimExtractor
+from ..nodes.frame import AssignFn
+from ..nodes.generate import GenerateFn, PersonaProvider
+from ..nodes.schedule import PickFn
+from ..nodes.synthesize import ComposeFn
+from .builtin import ROUNDTABLE, ROUNDTABLE_CONTINUOUS
+from .compile import compile_recipe
 
 
 def build_roundtable_recipe(

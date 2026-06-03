@@ -14,7 +14,7 @@ import uvicorn
 from .llm import make_chat_model
 from .nodes.clarify import default_clarifier
 from .nodes.synthesize import default_composer
-from .recipe_select import default_recipe_selector
+from .recipes import default_recipe_selector
 from .service import create_app
 
 _model = make_chat_model()

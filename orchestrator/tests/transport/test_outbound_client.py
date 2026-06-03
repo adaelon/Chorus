@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from app.outbound_client import OutboundClient
+from app.transport.outbound_client import OutboundClient
 
 
 def _provider(mapping):

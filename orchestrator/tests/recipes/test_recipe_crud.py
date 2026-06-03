@@ -7,7 +7,7 @@ import copy
 from fastapi.testclient import TestClient
 from langgraph.checkpoint.memory import MemorySaver
 
-from app.recipes_builtin import ROUNDTABLE
+from app.recipes.builtin import ROUNDTABLE
 from app.service import create_app
 from app.state import AgentSlot, Candidate
 

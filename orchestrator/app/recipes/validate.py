@@ -17,8 +17,8 @@ from __future__ import annotations
 from collections import OrderedDict
 from functools import reduce
 
-from .recipes_cond import STATE_FIELDS, check_cond
-from .recipes_spec import REGISTRY, Primitive
+from .cond import STATE_FIELDS, check_cond
+from .spec import REGISTRY, Primitive
 
 INITIAL_FIELDS = frozenset({"group_key", "roster", "history"})
 
