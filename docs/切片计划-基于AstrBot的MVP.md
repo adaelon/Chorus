@@ -252,9 +252,9 @@
 
 ### S5.4.1 编译器（声明式 DAG → StateGraph）
 
-**S5.4.1a `when` 小解释器 ⏳**
-- 做：`app/recipes/cond.py`——`eval_cond(cond, state)->bool`，`cond={field,op,value}|{all:[...]}|{any:[...]}`，算子白名单 `== != > >= < <= in empty truthy`，字段限 `GroupState`。**数据非代码、无 eval**。
-- 判据：`test_cond` — 各算子 + all/any + 非法字段/算子报错，穷举。
+**S5.4.1a `when` 小解释器 ✅**
+- 做：`app/recipes_cond.py`（扁平）——`eval_cond(cond, state)->bool`，`cond={field,op,value}|{all:[...]}|{any:[...]}`（可嵌套），算子白名单 `== != > >= < <= in empty truthy`，字段限 `GroupState`。**数据非代码、无 eval**。
+- 判据：`tests/test_cond.py`（11 条）各算子 + all/any 嵌套 + 非法字段/算子/非 dict/坏复合报错；`.venv` 全量 **128 passed, 2 skipped**。
 
 **S5.4.1b `compile_recipe(json)->StateGraph` 直译 ⏳**
 - 做：`app/recipes/compile.py`——`nodes` 按 `use` 从 registry 取 node_builder→`add_node(id)`；无 `when` 边→`add_edge`；带 `when` 边按 `from` 归组→`add_conditional_edges`（读 state 跑 `eval_cond`，命中 `to`，无命中走 else 边）；START/END 直连。
