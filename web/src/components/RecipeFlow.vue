@@ -11,7 +11,8 @@
             闸：{{ budgetOf(n) }}
           </v-chip>
         </div>
-        <div class="node-id text-medium-emphasis">{{ n.use }} · {{ n.id }}</div>
+        <!-- 仅当实例 id 与原语名不同（同一原语用多次）才显示，避免 "frame · frame" 噪声 -->
+        <div v-if="n.id !== n.use" class="node-id text-medium-emphasis">{{ n.use }} · {{ n.id }}</div>
         <!-- 出边：条件分支 / 循环回边，逐条人话标注 -->
         <div v-if="branchesOf(n.id).length" class="branches">
           <div v-for="(b, j) in branchesOf(n.id)" :key="j" class="branch" :class="{ back: b.back }">
