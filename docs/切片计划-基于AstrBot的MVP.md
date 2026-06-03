@@ -315,6 +315,38 @@
 
 ---
 
+## S5.6 分层圆桌（breakout 原语）🅿️ 设计中
+
+> 子群领域圆桌 → 跨域圆桌（避免 8~10 agent 同群乱序）。需新增 `breakout` 原语（roster 分域 + 子图 map + 汇总上提）+ 状态嵌套 + 扩 `RecipePlan`/`assemble` 词表。当前引擎扁平、无子群（见 `docs/引擎能力与原语.md` §9），是真新能力，**暂不落细**（待单独设计）。
+
+## S5.7 会话历史（复用 checkpointer，§6.17）
+
+> state 已按 group_key 持久在 checkpointer；只缺一个能"列出会话"的索引 + 一个只读渲染。不分配方（用户要求）。
+
+**S5.7a 会话索引表 + 读取端点 ⏳**
+- 做：`Conversation` 表（id=group_key, title, recipe_id, created_at, updated_at）；roundtable/`/recipe/run` 起场时 upsert 一条（title=request、recipe_id=配方或 None）；`GET /conversations`（近→远列表）；`GET /conversations/{key}`（用共享图 `aget_state` 读 GroupState 的 history/output/roster）。
+- 不做：消息另存表；前端；继续/重试（S5.8）。
+- 判据：`pytest` — 起一场后 /conversations 列得到、/conversations/{key} 返回含发言的 history（注入假节点离线）。
+
+**S5.7b 历史页（只读渲染）⏳**
+- 做：`/history` 页列对话（标题+时间）→ 点开渲染气泡（复用 ChatPage 气泡渲染，只读）；导航加「历史」；api `listConversations/getConversation`。
+- 判据：`npm run build` 过；起几场后历史页能看到并打开（手动）。
+
+## S5.8 出错重试（断点续跑，§6.17）
+
+> 节点报错时 checkpointer 停在该节点前的最后成功超步；以 `None` 续跑 = 重试该节点（不整场重来）。
+
+**S5.8a 重试端点 ⏳**
+- 做：`POST /session/{key}/retry/stream`——按 `Conversation.recipe_id` 取对应图（默认 roundtable_graph / 自定义 recompile）→ `iter_events(graph, None, cfg)` 从最后 checkpoint 重跑挂起节点 → SSE。**先 verify** LangGraph `astream(None)` 的续跑语义（注入"首次抛错、二次成功"的假节点断言重试后跑通）。
+- 不做：前端。
+- 判据：`pytest` — 假 turn 首调抛错→第一段 SSE 出 error；retry 端点续跑→出 turn/output（断点续，不重跑已完成轮）。
+
+**S5.8b 前端重试按钮 ⏳**
+- 做：SSE `error` 事件 → 显示「重试」按钮 + 清掉报错那一轮的半截气泡 → 调 retry 端点续流（handlers 同圆桌）。
+- 判据：`npm run build` 过；人为造错后点重试能接着跑（手动）。
+
+---
+
 ## S6 发布（pip 安装即用，§6.15）
 
 > 目标：`pipx install chorus` → `chorus serve` → 浏览器开 localhost 就是完整产品（圆桌/扇出/好友/L2 选配方），不碰 telegram 也能用。telegram 桥外置（§6.15：进不了 pip，分层必然）。
