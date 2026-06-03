@@ -344,9 +344,11 @@
 - 不做：前端（S5.8b）。
 - 判据：`tests/service/test_retry.py` — 假 generate 首调抛错→起场 SSE 出 error；retry→出 turn+human_gate；且 frame 的 assign 只跑 1 次（断点续证据）、generate 跑 2 次；`.venv` 全量 **164 passed, 2 skipped**。
 
-**S5.8b 前端重试按钮 ⏳**
-- 做：SSE `error` 事件 → 显示「重试」按钮 + 清掉报错那一轮的半截气泡 → 调 retry 端点续流（handlers 同圆桌）。
+**S5.8b 前端重试按钮 ✅**
+- 做：ChatPage error（SSE error 或网络异常）+ 有 groupKey → `canRetry`；错误条上「重试」按钮 → `retry()` 清掉报错那轮半截气泡（`current`）→ `sessionRetryStream`（/session/{key}/retry/stream）续流；api `sessionRetryStream`。
 - 判据：`npm run build` 过；人为造错后点重试能接着跑（手动）。
+
+> **S5.8 出错重试（a–b）完成** ✅。**S5.7+S5.8**：历史可列/看/续/删 + 出错可重试，全建在 checkpointer + `_graph_for` 上。
 
 ---
 

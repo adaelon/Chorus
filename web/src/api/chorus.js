@@ -97,6 +97,10 @@ export const roundtableInterject = (group_key, text) =>
 export const sessionResumeStream = (group_key, resume, handlers) =>
   streamPost(`/session/${group_key}/resume/stream`, resume, handlers)
 
+// 出错重试（S5.8b）：从最后 checkpoint 断点续跑报错的挂起节点。
+export const sessionRetryStream = (group_key, handlers) =>
+  streamPost(`/session/${group_key}/retry/stream`, {}, handlers)
+
 // 会话历史（S5.7a）
 export const listConversations = () => brainApi.get('/conversations').then((r) => r.data)
 export const getConversation = (key) => brainApi.get(`/conversations/${key}`).then((r) => r.data)

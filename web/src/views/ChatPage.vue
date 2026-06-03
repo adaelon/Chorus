@@ -33,7 +33,15 @@
       <span v-if="status" class="text-caption ml-3">{{ status }}</span>
     </template>
 
-    <v-alert v-if="error" type="error" class="mt-4" :text="error" />
+    <v-alert v-if="error" type="error" class="mt-4">
+      <div class="d-flex align-center">
+        <span>{{ error }}</span>
+        <v-spacer />
+        <v-btn v-if="canRetry" size="small" variant="tonal" :loading="loading" @click="retry">
+          重试
+        </v-btn>
+      </div>
+    </v-alert>
 
     <!-- 群视图：多身份气泡 -->
     <div v-if="messages.length" class="mt-6 chat">
@@ -131,6 +139,7 @@ import {
   recipeRunStream,
   roundtableStream,
   sessionResumeStream,
+  sessionRetryStream,
 } from '../api/chorus'
 import { renderMd } from '../utils/markdown'
 
@@ -150,6 +159,7 @@ const dims = ref({}) // contact_id -> dimension（FRAME 分配）
 const output = ref('')
 const loading = ref(false)
 const error = ref('')
+const canRetry = ref(false) // 出错后可重试（断点续跑）
 const status = ref('')
 
 const loaded = ref(false) // 从历史载入的会话（隐藏起场表单）
@@ -292,22 +302,36 @@ const handlers = {
   },
   error: (e) => {
     error.value = e.detail
+    if (groupKey.value) canRetry.value = true // 已有会话 → 可断点续跑重试
   },
 }
 
 async function runLeg(streamFn) {
   loading.value = true
   error.value = ''
+  canRetry.value = false
   paused.value = false
   pauseType.value = null
   try {
     await streamFn()
   } catch (e) {
     error.value = String(e?.message || e)
+    if (groupKey.value) canRetry.value = true
   } finally {
     loading.value = false
     status.value = ''
   }
+}
+
+// 出错重试：清掉报错那轮的半截气泡 → 从最后 checkpoint 断点续跑（S5.8b）。
+async function retry() {
+  if (!groupKey.value) return
+  if (current) {
+    const i = messages.value.indexOf(current)
+    if (i >= 0) messages.value.splice(i, 1)
+    current = null
+  }
+  await runLeg(() => sessionRetryStream(groupKey.value, handlers))
 }
 
 async function start() {
