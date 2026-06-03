@@ -29,13 +29,14 @@ from pydantic import BaseModel, Field
 from sqlmodel import select
 
 from .db.engine import init_models, make_engine, make_session_factory
-from .db.models import Contact, Recipe
+from .db.models import Contact, Conversation, Recipe
 from .db.repo import (
     bot_ref_provider_from,
     persona_provider_from,
     reputation_adjuster_from,
     roster_provider_from,
     seed_builtin_recipes,
+    upsert_conversation,
 )
 from .nodes.clarify import ClarifyFn
 from .nodes.curate import Eliminate, Pick, Reassign, ReputationAdjuster
@@ -473,6 +474,9 @@ def create_app(
         }
         if req.max_turns_per_human is not None:
             state_in["max_turns_per_human"] = req.max_turns_per_human
+        await upsert_conversation(
+            request.app.state.session_factory, req.group_key, req.request, req.recipe_id
+        )
         return _sse_from_events(
             graph,
             state_in,
@@ -598,6 +602,7 @@ def create_app(
         }
         if req.max_turns_per_human is not None:
             state_in["max_turns_per_human"] = req.max_turns_per_human
+        await upsert_conversation(request.app.state.session_factory, req.group_key, req.request)
         return _sse_from_events(
             graph,
             state_in,
@@ -754,5 +759,38 @@ def create_app(
             await s.delete(obj)
             await s.commit()
             return {"deleted": rid}
+
+    # ---- 会话历史（S5.7a，§6.17）----
+
+    @app.get("/conversations")
+    async def list_conversations(request: Request):
+        """会话索引（近→远）。消息本体在 checkpointer，这里只列标题/时间。"""
+        async with request.app.state.session_factory() as s:
+            return (
+                await s.exec(select(Conversation).order_by(Conversation.created_at.desc()))
+            ).all()
+
+    @app.get("/conversations/{key}")
+    async def get_conversation(key: str, request: Request):
+        """从 checkpointer 读一场会话的 history/output/roster + resumable（snap.next 非空=可续）。
+
+        读 state 与图无关（同 saver+thread_id），用 roundtable_graph 读即可；续跑取对应图 = S5.7b。
+        """
+        async with request.app.state.session_factory() as s:
+            conv = await s.get(Conversation, key)
+        snap = await request.app.state.roundtable_graph.aget_state(_cfg(key))
+        vals = snap.values or {}
+        if conv is None and not vals:
+            raise HTTPException(status_code=404, detail=f"conversation {key} not found")
+        return {
+            "id": key,
+            "title": conv.title if conv else "",
+            "recipe_id": conv.recipe_id if conv else "",
+            "created_at": conv.created_at if conv else None,
+            "history": vals.get("history", []),
+            "output": vals.get("output"),
+            "roster": vals.get("roster", []),
+            "resumable": bool(snap.next),
+        }
 
     return app

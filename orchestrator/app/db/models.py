@@ -56,6 +56,22 @@ class Message(SQLModel, table=True):
     ts: float = Field(default_factory=time.time)
 
 
+class Conversation(SQLModel, table=True):
+    """会话索引（S5.7a，§6.17）：列出历史会话用。
+
+    消息本体在 checkpointer 的 GroupState.history（single source）；这张表只补 checkpointer
+    缺的"列出所有会话"能力 + 标题/配方。`id` = group_key（= thread_id）。`recipe_id` 空=默认圆桌。
+    """
+
+    __tablename__ = "conversations"
+
+    id: str = Field(primary_key=True)
+    title: str = ""
+    recipe_id: str = ""  # "" = 默认 roundtable；否则库内配方 id（续跑取图用）
+    created_at: float = Field(default_factory=time.time)
+    updated_at: float = Field(default_factory=time.time)
+
+
 class Recipe(SQLModel, table=True):
     """配方库（S5.4.2a，§6.16）：用户/内置的声明式 DAG（nodes/edges）。
 

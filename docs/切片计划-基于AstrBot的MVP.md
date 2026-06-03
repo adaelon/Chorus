@@ -323,10 +323,10 @@
 
 > state 已按 group_key 持久在 checkpointer；只缺"列出会话"的索引 + 渲染。**未到 END 的会话可续**（继续=重试 共用"按 recipe_id 取图续跑"，见 §6.17 命门）。不分配方（用户要求）。
 
-**S5.7a 会话索引表 + 读端点 + 图解析 ⏳**
-- 做：`Conversation` 表（id=group_key, title, recipe_id, created_at, updated_at）；roundtable/`/recipe/run` 起场时 upsert（title=request、recipe_id=配方或 None）；`GET /conversations`（近→远）；`GET /conversations/{key}`（`aget_state` 读 history/output/roster + `resumable`=snap.next 非空）；**`_graph_for(recipe_id)` 图解析**（None→roundtable_graph / 自定义→`compile_recipe(库内 graph, saver, recipe_deps)`）——继续/重试共用。
-- 不做：消息另存表；前端。
-- 判据：`pytest` — 起一场后 /conversations 列得到、/conversations/{key} 返回含发言的 history + resumable 标志（注入假节点离线）。
+**S5.7a 会话索引表 + 读端点 ✅**
+- 做：`Conversation` 表（id=group_key, title, recipe_id, created_at, updated_at）；roundtable/`/recipe/run` 起场时 `upsert_conversation`；`GET /conversations`（按 created_at 近→远）；`GET /conversations/{key}`（`roundtable_graph.aget_state` 读 history/output/roster + `resumable`=snap.next 非空；读 state 与图无关）。
+- 不做：消息另存表；前端。**`_graph_for` 挪到 S5.7b**（读 state 与图无关，续跑才需取对应图）。
+- 判据：`tests/service/test_conversations.py`（3 条）列到/含发言 history+resumable/近→远序/未知 404；`.venv` 全量 **160 passed, 2 skipped**。
 
 **S5.7b 历史页（渲染 + 继续未结束的）⏳**
 - 做：`/history` 页列对话（标题+时间）→ 点开渲染气泡（复用 ChatPage 气泡）；`resumable` 时给「继续」→ ChatPage 以现有 group_key 载入历史 + 续场（不重开新 thread）；导航加「历史」；api `listConversations/getConversation`；ChatPage 支持 `?conversation=key`（载历史、不重生 group_key、用 `/session/{key}/resume/stream`）。

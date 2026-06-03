@@ -5,10 +5,12 @@
 
 from __future__ import annotations
 
+import time
+
 from sqlmodel import select
 
 from ..recipes.builtin import AUTO, FANOUT, ROUNDTABLE, ROUNDTABLE_CONTINUOUS
-from .models import Contact, Recipe
+from .models import Contact, Conversation, Recipe
 
 # 内置配方（S5.4.2a）：id = graph["recipe"] slug，启动 seed 进库、内置不可删。
 _BUILTINS = (FANOUT, ROUNDTABLE, ROUNDTABLE_CONTINUOUS, AUTO)
@@ -61,6 +63,19 @@ async def seed_builtin_recipes(session_factory) -> None:
                 obj.graph = g
                 obj.builtin = True
                 s.add(obj)
+        await s.commit()
+
+
+async def upsert_conversation(session_factory, group_key: str, title: str, recipe_id: str = "") -> None:
+    """会话起场时登记/刷新索引（S5.7a）：新建记 created_at，已存在则 bump updated_at。"""
+    async with session_factory() as s:
+        obj = await s.get(Conversation, group_key)
+        now = time.time()
+        if obj is None:
+            s.add(Conversation(id=group_key, title=title[:200], recipe_id=recipe_id, created_at=now, updated_at=now))
+        else:
+            obj.updated_at = now
+            s.add(obj)
         await s.commit()
 
 
