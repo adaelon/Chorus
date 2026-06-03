@@ -19,9 +19,13 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
+from ..budget import Budget, budget_tripped
 from ..llm import make_chat_model
 from ..state import GroupState
 from ..structured import structured_invoke
+
+# 圆桌预算闸（§6.16 A.4）：每个真人之间最多发言轮数，触顶停。spec.budget 复用此常量。
+SCHEDULE_BUDGET = Budget(count="turns_since_human", limit="max_turns_per_human", reason="budget")
 
 
 class NextSpeaker(BaseModel):
@@ -83,12 +87,13 @@ async def decide_next(
     *,
     pick: PickFn | None = None,
     model: ChatOpenAI | None = None,
+    budget: Budget | None = SCHEDULE_BUDGET,
 ) -> SchedulerDecision:
-    """§3.2 调度决策：人优先 → 预算闸 → 主持人选人。"""
+    """§3.2 调度决策：人优先 → 预算闸 → 主持人选人（闸由声明式 Budget 驱动，§6.16 A.4）。"""
     if state.pending_human is not None:
         return YieldToHuman()
-    if state.turns_since_human >= state.max_turns_per_human:
-        return Stop(reason="budget")
+    if budget is not None and budget_tripped(state, budget):
+        return Stop(reason=budget.reason)
     chooser = pick or moderator_llm_pick(model or make_chat_model())
     return await chooser(state)
 
@@ -98,9 +103,10 @@ async def schedule(
     *,
     pick: PickFn | None = None,
     model: ChatOpenAI | None = None,
+    budget: Budget | None = SCHEDULE_BUDGET,
 ) -> dict:
     """SCHEDULE 节点：跑 decide_next，把决策落成 state delta（供 S3.3 条件边路由）。"""
-    decision = await decide_next(state, pick=pick, model=model)
+    decision = await decide_next(state, pick=pick, model=model, budget=budget)
     if isinstance(decision, NextSpeaker):
         return {
             "next_speaker": decision.contact_id,

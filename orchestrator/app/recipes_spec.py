@@ -21,13 +21,14 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from .budget import Budget
 from .nodes.clarify import clarify
 from .nodes.curate import curate_interrupt_node
 from .nodes.fanout import fanout
 from .nodes.frame import frame
 from .nodes.human import human_gate
-from .nodes.plan import plan
-from .nodes.schedule import schedule
+from .nodes.plan import PLAN_BUDGET, plan
+from .nodes.schedule import SCHEDULE_BUDGET, schedule
 from .nodes.synthesize import synthesize_roundtable
 from .nodes.turn import turn
 from .state import GroupState
@@ -49,7 +50,7 @@ class PrimitiveSpec:
     needs: tuple[str, ...] = ()  # reads 的子集，但必须被上游写过否则非法（编译期 S5.4.1c 校验）
     emits: tuple[str, ...] = ()  # router/human 才有：可能的 next_decision 标签（供条件边）
     args: type | None = None  # 节点级配置 schema（阈值/上限/...，本刀全 None，留后）
-    budget: tuple[str, str] | None = None  # router：(计数字段, 上限字段)，编译器据此自动插闸
+    budget: Budget | None = None  # router：声明式预算闸（计数/上限/原因），编译器据此插闸（§6.16 A.4）
 
 
 @dataclass(frozen=True)
@@ -106,7 +107,7 @@ REGISTRY: dict[str, Primitive] = {
         writes=("next_speaker", "next_decision", "stop_reason"),
         needs=("roster",),
         emits=("next_speaker", "yield_to_human", "stop"),
-        budget=("turns_since_human", "max_turns_per_human"),
+        budget=SCHEDULE_BUDGET,
     ),
     "plan": _p(
         plan,
@@ -116,7 +117,7 @@ REGISTRY: dict[str, Primitive] = {
         writes=("next_decision", "next_speaker", "plan_steps", "stop_reason"),
         needs=("roster",),
         emits=("fanout", "speak", "synthesize", "stop"),
-        budget=("plan_steps", "max_plan_steps"),
+        budget=PLAN_BUDGET,
     ),
     "human_gate": _p(
         human_gate,
@@ -163,8 +164,8 @@ def check_spec(spec: PrimitiveSpec) -> None:
     if spec.budget is not None:
         if spec.kind != "router":
             raise ValueError(f"{spec.name}: 只有 router 能声明 budget")
-        if len(spec.budget) != 2 or not set(spec.budget) <= STATE_FIELDS:
-            raise ValueError(f"{spec.name}: budget 必须是两个 GroupState 字段 (计数, 上限)")
+        if {spec.budget.count, spec.budget.limit} - STATE_FIELDS:
+            raise ValueError(f"{spec.name}: budget 的计数/上限必须是 GroupState 字段")
 
 
 def validate_registry(registry: dict[str, Primitive] = REGISTRY) -> None:

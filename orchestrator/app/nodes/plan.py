@@ -21,9 +21,13 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
+from ..budget import Budget, budget_tripped
 from ..llm import make_chat_model
 from ..state import GroupState
 from ..structured import structured_invoke
+
+# auto 配方步数闸（§6.16 A.4）：主持人已组原语步数触顶强制收尾。spec.budget 复用此常量。
+PLAN_BUDGET = Budget(count="plan_steps", limit="max_plan_steps", reason="plan_budget")
 
 
 class Fanout(BaseModel):
@@ -97,13 +101,14 @@ async def plan(
     *,
     planner: PlanFn | None = None,
     model: ChatOpenAI | None = None,
+    budget: Budget | None = PLAN_BUDGET,
 ) -> dict:
     """PLAN 节点：步数闸优先 → 主持人选原语 → 落成 state delta（next_decision 供条件边路由）。
 
-    步数闸（§B2 确定性裁决）：到 `max_plan_steps` 强制 synthesize 收尾，绝不无限循环。
+    步数闸（§B2 确定性裁决，由声明式 Budget 驱动）：触顶强制 synthesize 收尾，绝不无限循环。
     """
-    if state.plan_steps >= state.max_plan_steps:
-        return {"next_decision": "synthesize", "stop_reason": "plan_budget"}
+    if budget is not None and budget_tripped(state, budget):
+        return {"next_decision": "synthesize", "stop_reason": budget.reason}
 
     chooser = planner or default_planner(model or make_chat_model())
     decision = await chooser(state)

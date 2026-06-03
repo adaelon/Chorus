@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import pytest
 
+from app.budget import Budget, budget_tripped
 from app.recipes_spec import REGISTRY, PrimitiveSpec, check_spec, validate_registry
+from app.state import AgentSlot, GroupState, Msg
 
 
 def test_registry_is_self_consistent():
@@ -27,11 +29,25 @@ def test_registry_covers_expected_primitives():
 def test_spot_contracts():
     """抽查几条关键契约，锁住设计意图。"""
     assert REGISTRY["turn"].spec.needs == ("next_speaker",)  # 发言前必有上游定人
-    assert REGISTRY["schedule"].spec.budget == ("turns_since_human", "max_turns_per_human")
-    assert REGISTRY["plan"].spec.budget == ("plan_steps", "max_plan_steps")
+    assert REGISTRY["schedule"].spec.budget == Budget("turns_since_human", "max_turns_per_human", "budget")
+    assert REGISTRY["plan"].spec.budget == Budget("plan_steps", "max_plan_steps", "plan_budget")
     # router 的 emits 与节点真实路由标签一致
     assert set(REGISTRY["schedule"].spec.emits) == {"next_speaker", "yield_to_human", "stop"}
     assert set(REGISTRY["plan"].spec.emits) == {"fanout", "speak", "synthesize", "stop"}
+
+
+def test_budget_descriptor_drives_gate():
+    """声明式 Budget：触顶（计数≥上限）由 budget_tripped 判定（§6.16 A.4）。"""
+    b = REGISTRY["plan"].spec.budget
+    st = GroupState(
+        group_key="g",
+        roster=[AgentSlot(contact_id="A")],
+        history=[Msg(sender_id="u", sender_kind="human", text="q")],
+        plan_steps=8,
+        max_plan_steps=8,
+    )
+    assert budget_tripped(st, b) is True
+    assert budget_tripped(st.model_copy(update={"plan_steps": 7}), b) is False
 
 
 def test_every_router_emits_and_writes_next_decision():
@@ -72,6 +88,13 @@ def test_check_spec_rejects_router_without_emits():
 
 
 def test_check_spec_rejects_budget_on_non_router():
-    bad = PrimitiveSpec(name="x", kind="transform", budget=("turns_since_human", "max_turns_per_human"))
+    bad = PrimitiveSpec(name="x", kind="transform", budget=Budget("turns_since_human", "max_turns_per_human", "budget"))
     with pytest.raises(ValueError, match="只有 router 能声明 budget"):
+        check_spec(bad)
+
+
+def test_check_spec_rejects_budget_with_unknown_field():
+    bad = PrimitiveSpec(name="x", kind="router", writes=("next_decision",), emits=("stop",),
+                        budget=Budget("not_a_field", "max_plan_steps", "r"))
+    with pytest.raises(ValueError, match="budget 的计数/上限必须是 GroupState 字段"):
         check_spec(bad)

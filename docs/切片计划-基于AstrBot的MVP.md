@@ -240,9 +240,9 @@
 - 做：`curate_interrupt_node` 去 `Command(goto)`/`destinations`，返回 dict delta + `next_decision∈{curate,synthesize}`；`build_fanout_recipe` 加 `_route_after_curate` 条件边（含 **curate→curate 自循环回边**）。**A3**。（registry 名 `curate_gate`，节点函数名保留 `curate_interrupt_node`。）
 - 判据：`.venv` 全量 **115 passed, 2 skipped**；自循环由 test_interrupt 多轮策展覆盖。
 
-**S5.4.0d 预算闸声明式 ⏳**
-- 做：`plan`/`schedule` 的步数/预算闸从节点内硬编码改由 `spec.budget=(计数字段,上限字段)` 驱动；编译器/运行时据 spec 自动在 router 前插闸。**A3**。
-- 判据：`test_auto`（步数闸到顶必停）、`test_roundtable`（预算闸）全绿。
+**S5.4.0d 预算闸声明式 ✅**
+- 做：新增 `app/budget.py`——`Budget(count,limit,reason)` 描述符 + `budget_tripped`；`schedule`/`plan` 的闸从散落字面量改读注入的 `Budget`（默认各自 `SCHEDULE_BUDGET`/`PLAN_BUDGET`，直接调用照常受闸）；`spec.budget` 复用同一常量（单一来源，供编译器/画布读）。**A3**。
+- 判据：`.venv` 全量 **117 passed, 2 skipped**（test_schedule/test_auto 步数闸 + 2 新 budget 测试）。
 
 **S5.4.0e 两 synthesize 合一 ⏳**
 - 做：`synthesize`/`synthesize_roundtable` 合成一个——按 `claims` 有无走圆桌主笔 / 扇出汇候选兜底。**A3**。
