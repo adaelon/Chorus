@@ -333,6 +333,26 @@ class Message(SQLModel):     # 群历史(=短期记忆)
 **何时回头**：要跨会话搜索/分析消息时再建消息索引表。
 **展开**：切片 S5.7（会话历史）/ S5.8（出错重试）。
 
+### §6.18 好友双绑定解耦：身份中立 + 平台无关 + 模型无关
+**决策**：好友（Contact）拆成**中立身份 + 两条可插拔绑定**，编排核心（LangGraph 图）永远只见 `contact_id` + 不透明 `group_key`，平台与模型的选择全部收敛到边界两张表。换 IM、换模型，核心零改动（延续 §6.12 transport 无关 + §6.4 LLM 归属）。
+```
+Contact { id,name,title,persona_style,base_stance,reputation   # 身份:平台/模型无关、可移植
+          channel:{adapter,account_ref}     # 出站绑定 → 解耦平台
+          llm_ref:str }                      # 推理绑定 → 解耦模型
+LLMBackend { id,name,base_url,api_key_env,model,temperature,max_tokens }  # 独立注册表
+ChannelDriver(adapter)  # 统一接口 send(group_key,account_ref,text)；AstrBot 桥退化成一个 driver
+```
+- **维度一·平台解耦（轻量 router）**：`bot_ref:str` → `channel:{adapter,account_ref}`（`adapter` 选驱动、`account_ref`=原 bot_ref）。`OutboundClient` 从 AstrBot 专用客户端升级为 **router**：按 `contact.channel.adapter` 派给对应 driver。`group_key` 重定义为 **transport 不透明令牌**（解释权归 adapter；编排层本就只透传不解析）——换平台 = 加 driver + 改 contact 的 adapter，`group_key↔平台 session` 的映射归 adapter 内部。
+- **维度二·模型解耦（每好友独立 LLM）**：引入 **`ModelProvider = (contact_id) -> ChatModel`**，与 `PersonaProvider` 对称。`generate/turn` 里 `model = await model_provider(slot.contact_id)` 再 astream；模型实例**按 binding 缓存**（不每轮新建）。无绑定 → 回退全局默认 model（现状不退化）。`Contact.llm_ref → LLMBackend` 独立注册表：多好友可共享一后端（同一 key 改一处）。
+- **密钥**：`LLMBackend` 只存 `api_key_env`（变量名，如 `"DEEPSEEK_KEY"`），真实 key 走环境变量——仓库可完整自包含、不泄密（延续 cmd_config 不进 git 的教训）。
+**否决**：
+- LLM 内联进 Contact（base_url/key/model 直存）：key 散落、同后端重复配、扩展性差。引用式 + 注册表更通用（§偏好通用可扩展）。
+- key 明文落 DB：DB 文件一旦进仓库/被复制即泄密。env 引用更安全。
+- 引入内部 `conversation_id` 映射层（重）：最彻底但要改 `group_key` 全链路，工作量大；当前编排层未解析 group_key，轻量重定义已够解耦，留待真接非 AstrBot 平台时再上。
+**命门**：对称之美——出站靠 `channel` 解耦平台、推理靠 `llm_ref` 解耦模型、人设始终中立，好友成为换 IM/换模型都不动的"数字人格"。`ModelProvider` 必须缓存（按 backend 去重），否则每轮新建 ChatOpenAI 连接爆炸。`channel` 迁移要兼容旧 `bot_ref`（adapter 缺省 `astrbot`、account_ref=旧值）。
+**何时回头**：真要接第二个 IM 平台时，落第一个非 astrbot driver；要 conversation_id 稳定映射时再上重方案。
+**展开**：切片 **S7 好友双绑定解耦**（两维度一起落档、分批切片，见 §7）。
+
 ---
 
 ## 7. MVP 落地顺序（每步独立可验）
