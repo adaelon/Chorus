@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # 插件目录，导入 llm_bridge
 
-from llm_bridge import do_llm  # noqa: E402
+from llm_bridge import do_bots, do_llm  # noqa: E402
 
 
 class _FakeResp:
@@ -76,3 +76,18 @@ def test_llm_bad_payload_returns_400():
     for payload in [{}, {"provider_id": "p"}, {"umo": "u"}, {"prompt": "q"}, "notdict"]:
         body, status = asyncio.run(do_llm(_by_id({}), _by_umo({}), payload))
         assert status == 400 and body["ok"] is False
+
+
+def test_bots_lists_platforms():
+    """S7.4d：列 platform 实例供导入。"""
+    bots = [{"id": "ada1", "name": "Telegram"}, {"id": "ada2", "name": "Telegram"}]
+    body, status = asyncio.run(do_bots(lambda: bots))
+    assert status == 200 and body["ok"] is True and body["bots"] == bots
+
+
+def test_bots_error_caught():
+    def _boom():
+        raise RuntimeError("no platform manager")
+
+    body, status = asyncio.run(do_bots(_boom))
+    assert status == 200 and body["ok"] is False and "no platform" in body["error"]

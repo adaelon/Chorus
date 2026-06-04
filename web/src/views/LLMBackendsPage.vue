@@ -2,11 +2,12 @@
   <v-container>
     <h2 class="mb-1">LLM 后端注册表</h2>
     <p class="text-medium-emphasis mb-4">
-      每个好友可绑定一个后端（ada1=gpt、ada2=deepseek）。
-      <strong>密钥不在这里填明文</strong>——只填环境变量名（如 <code>DEEPSEEK_KEY</code>），真实 key 由运行环境提供，不入库、不进 git。
+      好友的"模型来源"：openai 兼容后端（直接粘贴 key，存本地 DB、不进 git）或 AstrBot bot（整 bot=模型+通道）。
+      <v-btn size="small" variant="tonal" class="ml-2" :loading="importing" @click="importBots">从 AstrBot 导入 bot</v-btn>
     </p>
 
     <v-alert v-if="error" type="error" class="mb-4" :text="error" />
+    <v-alert v-if="importMsg" type="info" class="mb-4" density="compact" :text="importMsg" />
 
     <!-- 新建 / 编辑表单 -->
     <v-card variant="outlined" class="mb-6">
@@ -119,6 +120,7 @@ import { computed, onMounted, ref } from 'vue'
 import {
   createLlmBackend,
   deleteLlmBackend,
+  listAstrbotBots,
   listLlmBackends,
   probeLlmModels,
   testLlmBackend,
@@ -131,6 +133,8 @@ const error = ref('')
 const editing = ref(false)
 const testing = ref(false)
 const probing = ref(false)
+const importing = ref(false)
+const importMsg = ref('')
 const testResult = ref(null) // { ok, reply?, error? }
 const modelOptions = ref([])
 
@@ -238,6 +242,38 @@ async function remove(id) {
     await load()
   } catch (e) {
     error.value = String(e?.message || e)
+  }
+}
+
+// S7.4d：从桥拉 AstrBot bot 列表，为尚未登记的 bot_id 批量建 astrbot_bot 后端（按 bot_id 去重）。
+async function importBots() {
+  importing.value = true
+  error.value = ''
+  importMsg.value = ''
+  try {
+    const r = await listAstrbotBots()
+    if (!r.ok) {
+      error.value = `从 AstrBot 拉取失败：${r.error}（需 AstrBot + group_relay 桥在跑）`
+      return
+    }
+    const have = new Set(backends.value.filter((b) => b.kind === 'astrbot_bot').map((b) => b.bot_id))
+    let added = 0
+    for (const bot of r.bots) {
+      if (!bot.id || have.has(bot.id)) continue
+      await createLlmBackend({
+        id: `llm-${crypto.randomUUID().slice(0, 8)}`,
+        name: `AstrBot:${bot.name || bot.id}`,
+        kind: 'astrbot_bot',
+        bot_id: bot.id,
+      })
+      added++
+    }
+    importMsg.value = `已导入 ${added} 个新 bot（共 ${r.bots.length} 个，已存在的跳过）`
+    await load()
+  } catch (e) {
+    error.value = String(e?.message || e)
+  } finally {
+    importing.value = false
   }
 }
 

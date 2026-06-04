@@ -98,6 +98,20 @@ class AstrBotChatModel:
         yield AIMessageChunk(content=text)
 
 
+async def fetch_astrbot_bots(bridge_url: str, *, timeout: float = 10.0) -> list[dict]:
+    """从桥拉 AstrBot platform 实例列表（S7.4d 一键导入）：`GET {bridge}/bots` → [{id,name}]。"""
+    import httpx
+
+    url = bridge_url.rstrip("/") + "/bots"
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.get(url)
+        resp.raise_for_status()
+        data = resp.json()
+    if isinstance(data, dict) and not data.get("ok", True):
+        raise RuntimeError(f"桥列 bot 失败：{data.get('error')}")
+    return data.get("bots", []) if isinstance(data, dict) else []
+
+
 def make_model_from_backend(backend: Any, *, bridge_url: str) -> Any:
     """按 `LLMBackend.kind` 造模型：
     - openai → ChatOpenAI（缺省/未知亦按此，向后兼容）

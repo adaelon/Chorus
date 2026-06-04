@@ -44,3 +44,14 @@ async def do_llm(get_provider_by_id, get_using_provider, payload) -> tuple[dict,
     )
     text = getattr(resp, "completion_text", "") or ""
     return {"ok": True, "text": text, **ref}, 200
+
+
+async def do_bots(list_bots) -> tuple[dict, int]:
+    """列 AstrBot platform 实例（= 可作 Chorus LLM 后端的 bot，S7.4d 一键导入）。
+
+    list_bots() -> [{id, name}]（main.py 由 context.platform_manager.platform_insts 注入；测试假桩）。
+    """
+    try:
+        return {"ok": True, "bots": list(list_bots())}, 200
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "bots": [], "error": str(e) or e.__class__.__name__}, 200

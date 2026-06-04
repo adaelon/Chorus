@@ -467,9 +467,9 @@
 
 > **S7.4 AstrBot bot 作为 LLM 后端（a-c）完成** ✅：好友的"模型来源"统一成一个菜单（openai 后端 / 各 AstrBot bot），选 bot 即模型+通道合一、好友页无 bot_ref。**S7 当前**：S7.1（每好友独立 LLM）✅ + S7.4（AstrBot bot 作后端，取代 S7.3 @bot）✅；S7.2（多平台 channel router）缓做。可选 S7.4d（从桥拉 bot 列表一键导入）。
 
-**S7.4d（可选）从桥拉取 platform 实例一键导入**
-- 做：桥加 `GET /bots`（列 platform 实例 id/name）；后端页「从 AstrBot 导入」批量建 astrbot_bot 后端，免手填 bot_id。
-- 判据：插件 `tests/`列实例；前端 build 过；手动导入可见。
+**S7.4d（可选）从桥拉取 platform 实例一键导入 ✅**
+- 做：桥 `llm_bridge.do_bots` + `GET /bots`（列 platform 实例 id/name，由 meta().id/adapter_display_name 构造）；`llm_astrbot.fetch_astrbot_bots` + orchestrator `GET /astrbot/bots` 代理；后端页「从 AstrBot 导入 bot」按钮批量建 astrbot_bot 后端（按 bot_id 去重）+ 修正过时文案。
+- 判据：插件 `tests/test_llm_bridge.py`（do_bots 列表/异常）+ `tests/service/test_llm_backends.py`（/astrbot/bots 代理/桥不可达）；`.venv` 全量 **188 passed, 2 skipped** + 插件 **20 passed**；`npm run build` 过。
 
 > **S7.4 完成后**：好友的"模型来源"= 一个统一菜单（openai 后端 / 各 AstrBot bot），选 bot 即模型+通道合一、无 bot_ref。**S7「好友双绑定解耦」**：S7.1（每好友独立 LLM）✅ + S7.3→S7.4（AstrBot bot 作后端）；S7.2（多平台 channel router）缓做（接第二平台再做）。
 

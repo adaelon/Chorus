@@ -149,3 +149,23 @@ def test_probe_models_endpoint(tmp_path, monkeypatch):
     with TestClient(_app(tmp_path)) as client:
         body = client.post("/llm-backends/probe-models", json={"base_url": "https://x/v1", "api_key": ""}).json()
         assert body["ok"] is False and "API Key" in body["error"]
+
+
+def test_astrbot_bots_endpoint(tmp_path, monkeypatch):
+    """S7.4d：/astrbot/bots 代理桥列 platform 实例；桥不可达→{ok:False}。"""
+
+    async def _bots(bridge_url, **kw):
+        return [{"id": "ada1", "name": "Telegram"}, {"id": "ada2", "name": "Telegram"}]
+
+    monkeypatch.setattr("app.service.fetch_astrbot_bots", _bots)
+    with TestClient(_app(tmp_path)) as client:
+        body = client.get("/astrbot/bots").json()
+        assert body["ok"] is True and [b["id"] for b in body["bots"]] == ["ada1", "ada2"]
+
+    async def _boom(bridge_url, **kw):
+        raise RuntimeError("桥没起")
+
+    monkeypatch.setattr("app.service.fetch_astrbot_bots", _boom)
+    with TestClient(_app(tmp_path)) as client:
+        body = client.get("/astrbot/bots").json()
+        assert body["ok"] is False and "桥没起" in body["error"]

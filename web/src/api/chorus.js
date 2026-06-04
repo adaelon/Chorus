@@ -138,6 +138,8 @@ export const deleteLlmBackend = (id) => brainApi.delete(`/llm-backends/${id}`).t
 // S7.1d 配置可验证：测试连通（ping）/ 拉模型列表（GET /v1/models）。按表单当前值校验，可未落库。
 export const testLlmBackend = (b) => brainApi.post('/llm-backends/test', b).then((r) => r.data)
 export const probeLlmModels = (b) => brainApi.post('/llm-backends/probe-models', b).then((r) => r.data)
+// S7.4d：从桥列 AstrBot platform 实例，供「从 AstrBot 导入」批量建 astrbot_bot 后端。
+export const listAstrbotBots = () => brainApi.get('/astrbot/bots').then((r) => r.data)
 
 // Contact 注册表 CRUD（S2.4）
 export const listContacts = () => brainApi.get('/contacts').then((r) => r.data)

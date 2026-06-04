@@ -44,7 +44,7 @@ from .nodes.curate import Eliminate, Pick, Reassign, ReputationAdjuster
 from .nodes.extract import ClaimExtractor
 from .nodes.frame import AssignFn
 from .llm import ping_model, probe_models
-from .llm_astrbot import make_model_from_backend
+from .llm_astrbot import fetch_astrbot_bots, make_model_from_backend
 from .nodes.generate import GenerateFn, ModelProvider, PersonaProvider
 from .nodes.plan import PlanFn
 from .nodes.schedule import PickFn
@@ -847,6 +847,14 @@ def create_app(
             return {"ok": True, "reply": reply}
         except Exception as e:  # noqa: BLE001 - 测试要把任何失败原样回显给用户
             return {"ok": False, "error": str(e) or e.__class__.__name__}
+
+    @app.get("/astrbot/bots")
+    async def astrbot_bots():
+        """从桥列 AstrBot platform 实例（S7.4d）：供「从 AstrBot 导入」批量建 astrbot_bot 后端。"""
+        try:
+            return {"ok": True, "bots": await fetch_astrbot_bots(bridge_url)}
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "bots": [], "error": str(e) or e.__class__.__name__}
 
     @app.post("/llm-backends/probe-models")
     async def probe_llm_models(b: LLMBackendCheck):

@@ -28,7 +28,7 @@ from astrbot.core.platform.message_session import MessageSession
 from astrbot.core.platform.message_type import MessageType
 
 from .inbound import Dedup, decide, make_inbound_msg
-from .llm_bridge import do_llm
+from .llm_bridge import do_bots, do_llm
 from .outbound import do_outbound
 
 logger = logging.getLogger("astrbot")
@@ -65,6 +65,7 @@ class GroupRelay(Star):
         app = web.Application()
         app.router.add_post("/outbound", self._handle_outbound)
         app.router.add_post("/llm", self._handle_llm)  # S7.1e：kind=astrbot 后端委托
+        app.router.add_get("/bots", self._handle_bots)  # S7.4d：列 platform 实例供一键导入
         runner = web.AppRunner(app)
         await runner.setup()
         site = web.TCPSite(runner, "127.0.0.1", self._port)
@@ -105,6 +106,17 @@ class GroupRelay(Star):
         body, status = await do_llm(
             self.context.get_provider_by_id, self.context.get_using_provider, payload
         )
+        return web.json_response(body, status=status)
+
+    async def _handle_bots(self, request: web.Request) -> web.Response:
+        def _list() -> list[dict]:
+            out = []
+            for p in self.context.platform_manager.platform_insts:
+                m = p.meta()
+                out.append({"id": m.id, "name": m.adapter_display_name or m.name})
+            return out
+
+        body, status = await do_bots(_list)
         return web.json_response(body, status=status)
 
     # ---- 入站（S4.2）----
