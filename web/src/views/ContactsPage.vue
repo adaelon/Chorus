@@ -26,7 +26,7 @@
           label="LLM 后端（该好友用哪个模型；留空=全局默认）"
           variant="outlined"
           clearable
-          :hint="backends.length ? '' : '还没有后端，去「模型」页新建一个'"
+          :hint="llmHint"
           persistent-hint
         />
         <v-btn color="primary" :loading="loading" :disabled="!form.id || !form.name" @click="save">
@@ -63,18 +63,28 @@ const loading = ref(false)
 const error = ref('')
 const editing = ref(false)
 
+const FOLLOW_BOT = '@bot' // 与后端 FOLLOW_BOT_LLM_REF 一致（S7.3b 整 bot 引用）
+
 const blank = () => ({ id: '', name: '', title: '', persona_style: '', base_stance: '', bot_ref: '', llm_ref: '' })
 const form = ref(blank())
 
-// 下拉项：后端 id → "显示名（model）"
-const backendItems = computed(() =>
-  backends.value.map((b) => ({ value: b.id, title: `${b.name}（${b.model || b.id}）` })),
-)
+// 下拉项：「跟随我的 AstrBot bot」+ 各 LLM 后端（id → "显示名（model）"）
+const backendItems = computed(() => [
+  { value: FOLLOW_BOT, title: '跟随我的 AstrBot bot（bot_ref）' },
+  ...backends.value.map((b) => ({ value: b.id, title: `${b.name}（${b.model || b.id}）` })),
+])
 function backendName(ref) {
   if (!ref) return '默认'
+  if (ref === FOLLOW_BOT) return '跟随 bot'
   const b = backends.value.find((x) => x.id === ref)
   return b ? b.name : ref // 后端已删则显示原始 id
 }
+// 提示：选了跟随 bot 却没填 bot_ref → 会回退全局
+const llmHint = computed(() => {
+  if (form.value.llm_ref === FOLLOW_BOT)
+    return form.value.bot_ref ? '模型与通道都用该 bot（需 AstrBot 在跑）' : '⚠ 选了跟随 bot，但未填 bot_ref，会回退全局默认'
+  return backends.value.length ? '' : '还没有后端，去「模型」页新建一个'
+})
 
 function resetForm() {
   form.value = blank()

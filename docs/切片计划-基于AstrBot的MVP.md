@@ -441,9 +441,11 @@
 - 不做：前端（S7.3c）。
 - 判据：`tests/infra/test_llm_astrbot.py`（_bot_umo / follow-bot by umo / 缺 gk 抛错 / 需 id|bot_ref）+ `test_model_provider.py`（@bot→model、无 bot_ref 回退、turn 注入 ctx）；`.venv` 全量 **186 passed, 2 skipped**（A3）。
 
-**S7.3c 前端：好友绑 AstrBot bot 一键**
-- 做：好友页「LLM 后端」下拉加一项「跟随我的 AstrBot bot（bot_ref）」；选中即同时用 bot_ref 作通道与模型，提示需 bot_ref 已填 + AstrBot 在跑。
-- 判据：`npm run build` 过；好友选「跟随 bot」→ 圆桌发言经该 bot 的 provider + 以该 bot 身份发出（手动 smoke，需 AstrBot 跑着）。
+**S7.3c 前端：好友绑 AstrBot bot 一键 ✅**
+- 做：`ContactsPage`「LLM 后端」下拉首项「跟随我的 AstrBot bot（bot_ref）」(值=`@bot`)；`backendName`/`llmHint` 适配（选中提示模型+通道都用该 bot、未填 bot_ref 警告回退）。
+- 判据：`npm run build` 过；选「跟随 bot」→ 圆桌发言经该 bot provider + 以该 bot 身份发出（手动 smoke，需 AstrBot 跑着）。
+
+> **S7.3 AstrBot 整 bot 引用（a-c）完成** ✅：桥按 umo 取 using-provider + follow-bot 绑定(ContextVar 注入 group_key) + 前端一键。一个 bot_ref 同供通道+模型，Chorus 引擎(人设/维度/点账本/合成)原样保留。**S7「好友双绑定解耦」当前到此**：S7.1（每好友独立 LLM）✅ + S7.3（AstrBot 整 bot 引用）✅；S7.2（多平台 channel router）缓做（接第二平台再做）。
 
 ---
 
