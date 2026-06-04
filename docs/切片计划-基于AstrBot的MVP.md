@@ -425,6 +425,24 @@
 - 不做：第二个真实 IM driver（要接时单独一刀）；内部 conversation_id 映射层（重方案，留 §6.18「何时回头」）。
 - 判据：`tests/transport/` astrbot driver 路由等价旧行为（既有出站测零改全绿，A3）；router 按 adapter 选对 driver、未知 adapter 报错。
 
+### S7.3 AstrBot 整 bot 绑定（channel+llm 合一，§6.18++ 「C」）
+
+> 好友 ≡ 一个 AstrBot bot：指一个引用同时拿「通道(以该 bot 发言)+模型(该 bot 在用 provider)」，省去分别配 channel/llm；Chorus 引擎（人设/维度/点账本/合成）原样保留。复用 S4.3 的 bot_ref（=channel）+ S7.1e 的桥 `/llm` + AstrBotChatModel。**否决 B 整 bot 自治（掏空引擎）。** 这类好友硬绑 AstrBot、不能单机——故 S7.1/S7.2 仍保留供单机与引擎自身 LLM。
+
+**S7.3a 桥 `/llm` 支持按 bot/umo 取 using-provider**
+- 做：`llm_bridge.do_llm` 兼容两种入参——显式 `provider_id`（S7.1e）或 `umo`（取 `Context.get_using_provider(umo)`=该 bot 在该群用的 provider）；main.py 透传。
+- 不做：前端/绑定（S7.3b/c）。
+- 判据：插件 `tests/test_llm_bridge.py`（+）按 umo 取 provider 委托产文本 + 两入参都覆盖；缺 provider→404。
+
+**S7.3b 「跟随我的 bot」模型绑定**
+- 做：好友标记"模型跟随 AstrBot bot"（如 `llm_ref="@bot"` 哨兵 / 一个 mode 字段）；`ModelProvider` 对这类好友读其 `bot_ref` → 返回 `AstrBotChatModel`（按 bot/umo 委托，umo 来自起场 group_key）；`make_model_from_backend`/`model_provider_from` 加这条解析路径。
+- 不做：前端（S7.3c）。
+- 判据：`tests/` 标记好友 → provider 返回按 bot 委托的 AstrBotChatModel（注入假桥）+ 非标记不退化；`.venv` 全量绿（A3）。
+
+**S7.3c 前端：好友绑 AstrBot bot 一键**
+- 做：好友页「LLM 后端」下拉加一项「跟随我的 AstrBot bot（bot_ref）」；选中即同时用 bot_ref 作通道与模型，提示需 bot_ref 已填 + AstrBot 在跑。
+- 判据：`npm run build` 过；好友选「跟随 bot」→ 圆桌发言经该 bot 的 provider + 以该 bot 身份发出（手动 smoke，需 AstrBot 跑着）。
+
 ---
 
 ## 依赖与执行顺序
@@ -441,6 +459,7 @@ S5.2 ─→ S5.4.0(引擎地基) → S5.4.1(编译器) → S5.4.2(配方库) →
    注：S5.3(L3 运行时接线) 待做，被 S5.4→S5.5 取代（先 L4 后 L3，§6.16）
 S5(core 稳) ─→ S6.0(配置解耦+包骨架+CLI) → S6.1(打进前端 dist) → S6.2(PyPI 发布 + group_relay 独立分发)
 S2.4(Contact+出站) ─→ S7.1(每好友独立 LLM: 注册表→ModelProvider→前端) ; S7.2(平台解耦: channel→router) 独立于 S7.1（§6.18，两维度并行可切）
+S7.1e + S4.3(bot_ref) ─→ S7.3(AstrBot 整 bot 绑定: channel+llm 合一，§6.18++「C」；桥按 umo 取 using-provider→跟随 bot→前端)
 ```
 
 **三个关键验收点**：

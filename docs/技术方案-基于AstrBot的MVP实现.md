@@ -370,6 +370,16 @@ ChannelDriver(adapter)  # 统一接口 send(group_key,account_ref,text)；AstrBo
   **取舍（记）**：`kind=astrbot` 走 HTTP 委托时**流式**是麻烦点——引擎吃 `astream`，而 AstrBot `text_chat` 非流式（`text_chat_stream` 有但要把 SSE 也桥过去）。MVP 先**非流式**（那一轮等全文再吐），流式后补。
 **展开**：切片 **S7.1d**（配置可验证：测试 + 拉模型列表）/ **S7.1e**（LLMBackend kind 化 + astrbot 委托），见 §7。
 
+#### §6.18++ 细化（2026-06-04）：C「整 bot 引用」——AstrBot 好友的 channel+llm 合一
+**澄清**："好友用 AstrBot" 的更省配置形态 = 一个好友 ≡ 一个 AstrBot bot：**指向该 bot 一个引用，同时拿到「通道(以该 bot 身份发言)+模型(该 bot 在用的 provider)」**，不再分别配 `channel` 与 `llm_ref`。
+**这不是"和 AstrBot 解耦"**（反而更绑 AstrBot），而是**把 S7 的两个独立绑定（S7.1 模型 + S7.2 通道）收成一个引用**——对"agent 已全在 AstrBot 配好"的人，配置省一大截，且 **Chorus 引擎原样保留**（人设 prompt / 临场维度 / 点账本 §6.11 / 调度 / 主笔合成仍归 Chorus）。
+- **关键洞察**：`Contact.bot_ref`（= channel 的 account_ref）**本就是 AstrBot bot/platform 实例 id**。S4.3 起出站已按它发言（=通道）。C 只补一条：让**模型也跟随该 bot**——`ModelProvider` 对这类好友返回薄适配器，调桥 `POST /llm`，桥用 `Context.get_using_provider(umo)`（已确认 Context 暴露）解析"该 bot 在该群用的 provider" → `text_chat`。于是 **bot_ref 一个引用同时供通道 + 模型**。
+- **与 S7.1e 关系**：S7.1e 的 `kind=astrbot` 是"显式 provider_id"的模型级委托；C 是"跟随我的 bot"的整 bot 引用（provider 由 bot 决定、并复用同一 bot 作通道）。两者共用桥 `/llm` 与 `AstrBotChatModel`，C 多一种"按 bot/umo 取 using-provider"的解析路径。
+**否决 B（整 bot 自治：人设+记忆+回复全归 AstrBot、bot 自己回群）**：会**掏空引擎**——临场维度/点账本/归属/主笔合成全失效，且需调 AstrBot 的 agent 层（违"窄桥只搬字节"）。C 保住引擎，B 不要。
+**仍需 S7.1/S7.2**：引擎自身 LLM（主持人/澄清/合成）与**单机 pip 路径（S6，不碰 AstrBot）**仍要独立 LLMBackend + channel。C 是**新增的"AstrBot bot 绑定"模式**，非替代。
+**取舍**：这类好友硬绑 AstrBot、不能单机；流式同 S7.1e（先非流式）。
+**展开**：切片 **S7.3**（AstrBot 整 bot 绑定：channel+llm 合一），见 §7。
+
 ---
 
 ## 7. MVP 落地顺序（每步独立可验）
