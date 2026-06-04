@@ -81,19 +81,28 @@ async def test_model_provider_from_unbound_backend_falls_back(tmp_path):
     assert await model_provider_from(sf)("ada") is None
 
 
-async def test_model_provider_from_follow_bot(tmp_path):
-    """S7.3b：好友 llm_ref='@bot' 且有 bot_ref → provider 返回 follow-bot AstrBotChatModel。"""
-    from app.llm_astrbot import FOLLOW_BOT_LLM_REF, AstrBotChatModel
+# 注：S7.3b 的 @bot 哨兵已被 S7.4 的 kind=astrbot_bot 后端取代（见 test_model_provider_from_astrbot_bot_backend）。
+
+
+async def test_channel_providers_read_bot_id_from_backend(tmp_path):
+    """S7.4b：bot_ref/roster provider 从 astrbot_bot 后端取 bot_id（legacy Contact.bot_ref 兜底）。"""
+    from app.db.repo import bot_ref_provider_from, roster_provider_from
 
     sf = await _sf(tmp_path)
     async with sf() as s:
-        s.add(Contact(id="ada", name="阿达", llm_ref=FOLLOW_BOT_LLM_REF, bot_ref="botX"))
-        s.add(Contact(id="noref", name="没绑", llm_ref=FOLLOW_BOT_LLM_REF))  # 选了跟随却没 bot_ref
+        s.add(LLMBackend(id="ab", name="ada1", kind="astrbot_bot", bot_id="botX"))
+        s.add(Contact(id="ada", name="阿达", llm_ref="ab"))  # 走后端 bot_id
+        s.add(Contact(id="legacy", name="老", bot_ref="botL"))  # legacy 直存 bot_ref
+        s.add(Contact(id="none", name="没"))  # 无出站 bot → 不在 roster
         await s.commit()
-    prov = model_provider_from(sf, bridge_url="http://bridge:9876")
-    m = await prov("ada")
-    assert isinstance(m, AstrBotChatModel) and m.bot_ref == "botX" and not m.provider_id
-    assert await prov("noref") is None  # 无 bot_ref → 回退全局
+
+    bp = bot_ref_provider_from(sf)
+    assert await bp("ada") == "botX"  # 后端 bot_id
+    assert await bp("legacy") == "botL"  # legacy 兜底
+    assert await bp("none") is None
+
+    roster = await roster_provider_from(sf)()
+    assert set(roster) == {"ada", "legacy"}
 
 
 async def test_turn_sets_current_group_key(tmp_path):

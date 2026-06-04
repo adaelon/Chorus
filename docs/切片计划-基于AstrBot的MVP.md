@@ -456,10 +456,10 @@
 - 不做：通道 provider 改造（S7.4b）；前端（S7.4c）。
 - 判据：`tests/infra/test_llm_astrbot.py`（dispatch astrbot_bot→bot_ref=bot_id）+ `test_model_provider.py`（好友绑 astrbot_bot→follow-bot model）；`.venv` 全量 **187 passed, 2 skipped**（A3）。
 
-**S7.4b 通道 provider 从后端取 bot_id + 去 @bot**
-- 做：`bot_ref_provider_from`/`roster_provider_from` 改为「Contact.llm_ref → astrbot_bot 后端 .bot_id」（legacy：Contact.bot_ref 仍存时兜底）；移除/弃用 `@bot` 哨兵（S7.3b）。
+**S7.4b 通道 provider 从后端取 bot_id + 去 @bot ✅**
+- 做：`repo._contact_bot_id`（llm_ref→astrbot_bot 后端 .bot_id，legacy 回退 Contact.bot_ref）；`bot_ref_provider_from`/`roster_provider_from` 改用它；删 `model_provider_from` 的 `@bot` 分支（被 astrbot_bot 取代）。
 - 不做：前端（S7.4c）。
-- 判据：`tests/` 好友绑 astrbot_bot 后端 → 出站路由到该 bot_id + roster 含该好友；无绑定不在 roster；既有出站测兼容（A3）。
+- 判据：`tests/nodes/test_model_provider.py::test_channel_providers_read_bot_id_from_backend`（后端 bot_id / legacy 兜底 / 无→不在 roster）；`.venv` 全量 **187 passed, 2 skipped**（A3，出站测兼容）。
 
 **S7.4c 前端：后端注册表加「AstrBot bot」+ 好友去 bot_ref**
 - 做：`LLMBackendsPage` 类型加「AstrBot bot」(显 bot_id 字段)；`ContactsPage` 移除 bot_ref 字段（只剩 LLM 后端下拉，含各 AstrBot bot）；移除 S7.3c 的 @bot 选项。
