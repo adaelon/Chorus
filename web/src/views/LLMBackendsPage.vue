@@ -17,7 +17,8 @@
           v-model="form.kind"
           :items="[
             { value: 'openai', title: 'openai 兼容（独立，自填 base_url/key/model）' },
-            { value: 'astrbot', title: 'astrbot（委托给 AstrBot 已配好的 provider）' },
+            { value: 'astrbot_bot', title: 'AstrBot bot（整 bot：模型+通道都用该 bot）' },
+            { value: 'astrbot', title: 'astrbot provider（委托指定 provider，进阶）' },
           ]"
           item-title="title"
           item-value="value"
@@ -26,7 +27,7 @@
         />
 
         <!-- kind=openai：独立后端 -->
-        <template v-if="form.kind !== 'astrbot'">
+        <template v-if="form.kind === 'openai'">
           <v-text-field v-model="form.base_url" label="base_url（OpenAI 兼容 /v1）" variant="outlined" />
           <v-text-field
             v-model="form.api_key"
@@ -56,7 +57,18 @@
           </v-row>
         </template>
 
-        <!-- kind=astrbot：委托后端 -->
+        <!-- kind=astrbot_bot：整 bot（模型+通道都用该 bot） -->
+        <template v-else-if="form.kind === 'astrbot_bot'">
+          <v-text-field
+            v-model="form.bot_id"
+            label="bot_id（AstrBot platform 实例 id）"
+            hint="好友选此后端 → 模型用该 bot 在用的 provider、出站以该 bot 身份发言。需 AstrBot 在跑。"
+            persistent-hint
+            variant="outlined"
+          />
+        </template>
+
+        <!-- kind=astrbot：委托指定 provider（进阶） -->
         <template v-else>
           <v-text-field
             v-model="form.provider_id"
@@ -90,11 +102,7 @@
         v-for="b in backends"
         :key="b.id"
         :title="b.name"
-        :subtitle="
-          b.kind === 'astrbot'
-            ? `类型:astrbot · 委托 provider:${b.provider_id || '—'}`
-            : `类型:openai · model:${b.model || '—'} · base_url:${b.base_url || '—'} · key:${b.api_key ? '已设' : '未设'} · temp:${b.temperature}`
-        "
+        :subtitle="subtitleOf(b)"
       >
         <template #append>
           <v-btn size="small" variant="text" @click="edit(b)">编辑</v-btn>
@@ -126,15 +134,22 @@ const probing = ref(false)
 const testResult = ref(null) // { ok, reply?, error? }
 const modelOptions = ref([])
 
-const blank = () => ({ id: '', name: '', kind: 'openai', base_url: '', api_key: '', model: '', temperature: 0.75, max_tokens: null, provider_id: '' })
+const blank = () => ({ id: '', name: '', kind: 'openai', base_url: '', api_key: '', model: '', temperature: 0.75, max_tokens: null, provider_id: '', bot_id: '' })
 const form = ref(blank())
 
-// 测试连通可用条件：openai 需 base_url/key/model 齐；astrbot 需 provider_id。
-const canTest = computed(() =>
-  form.value.kind === 'astrbot'
-    ? !!form.value.provider_id
-    : !!(form.value.base_url && form.value.api_key && form.value.model),
-)
+// 测试连通可用条件：openai 需 base_url/key/model；astrbot(provider) 需 provider_id；
+// astrbot_bot 不支持（要群内 umo 才能取该 bot 的 provider，连通在圆桌发言时验证）。
+const canTest = computed(() => {
+  if (form.value.kind === 'astrbot_bot') return false
+  if (form.value.kind === 'astrbot') return !!form.value.provider_id
+  return !!(form.value.base_url && form.value.api_key && form.value.model)
+})
+
+function subtitleOf(b) {
+  if (b.kind === 'astrbot_bot') return `类型:AstrBot bot · bot:${b.bot_id || '—'}（模型+通道）`
+  if (b.kind === 'astrbot') return `类型:astrbot provider · 委托:${b.provider_id || '—'}`
+  return `类型:openai · model:${b.model || '—'} · base_url:${b.base_url || '—'} · key:${b.api_key ? '已设' : '未设'} · temp:${b.temperature}`
+}
 
 function resetForm() {
   form.value = blank()
@@ -208,7 +223,8 @@ async function save() {
 function edit(b) {
   form.value = {
     id: b.id, name: b.name, kind: b.kind || 'openai', base_url: b.base_url, api_key: b.api_key || '',
-    model: b.model, temperature: b.temperature, max_tokens: b.max_tokens, provider_id: b.provider_id || '',
+    model: b.model, temperature: b.temperature, max_tokens: b.max_tokens,
+    provider_id: b.provider_id || '', bot_id: b.bot_id || '',
   }
   editing.value = true
   testResult.value = null

@@ -461,9 +461,11 @@
 - 不做：前端（S7.4c）。
 - 判据：`tests/nodes/test_model_provider.py::test_channel_providers_read_bot_id_from_backend`（后端 bot_id / legacy 兜底 / 无→不在 roster）；`.venv` 全量 **187 passed, 2 skipped**（A3，出站测兼容）。
 
-**S7.4c 前端：后端注册表加「AstrBot bot」+ 好友去 bot_ref**
-- 做：`LLMBackendsPage` 类型加「AstrBot bot」(显 bot_id 字段)；`ContactsPage` 移除 bot_ref 字段（只剩 LLM 后端下拉，含各 AstrBot bot）；移除 S7.3c 的 @bot 选项。
-- 判据：`npm run build` 过；建一个 AstrBot bot 后端 → 好友选它 → 圆桌经该 bot provider 发言 + 以该 bot 身份发出（手动 smoke，需 AstrBot 跑着）。
+**S7.4c 前端：后端注册表加「AstrBot bot」+ 好友去 bot_ref ✅**
+- 做：`LLMBackendsPage` 类型加「AstrBot bot」(astrbot_bot，显 bot_id；canTest 不含它/subtitleOf/blank/edit)；`ContactsPage` 移除 bot_ref 输入 + 移除 @bot 选项（下拉直接含各 AstrBot bot 后端；bot_ref 仍携带不抹 legacy）；删 dead `FOLLOW_BOT_LLM_REF`。
+- 判据：`npm run build` 过；`.venv` 全量 **187 passed, 2 skipped**；建 AstrBot bot 后端→好友选它→圆桌经该 bot provider+以该 bot 发出（手动 smoke）。
+
+> **S7.4 AstrBot bot 作为 LLM 后端（a-c）完成** ✅：好友的"模型来源"统一成一个菜单（openai 后端 / 各 AstrBot bot），选 bot 即模型+通道合一、好友页无 bot_ref。**S7 当前**：S7.1（每好友独立 LLM）✅ + S7.4（AstrBot bot 作后端，取代 S7.3 @bot）✅；S7.2（多平台 channel router）缓做。可选 S7.4d（从桥拉 bot 列表一键导入）。
 
 **S7.4d（可选）从桥拉取 platform 实例一键导入**
 - 做：桥加 `GET /bots`（列 platform 实例 id/name）；后端页「从 AstrBot 导入」批量建 astrbot_bot 后端，免手填 bot_id。

@@ -15,8 +15,7 @@ from langchain_core.messages import AIMessageChunk
 from .llm import make_chat_model_from_backend
 from .run_ctx import current_group_key
 
-# 好友 `llm_ref` 的哨兵：模型跟随该好友的 AstrBot bot（S7.3b「整 bot 引用」C）。
-FOLLOW_BOT_LLM_REF = "@bot"
+# 注：S7.3b 的 `@bot` 哨兵已被 S7.4 的 kind=astrbot_bot 后端取代（follow-bot 机制本身保留）。
 
 
 def _bot_umo(bot_ref: str, group_key: str) -> str:
