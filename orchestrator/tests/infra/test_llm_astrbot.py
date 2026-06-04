@@ -11,7 +11,8 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from app.db.models import LLMBackend
 from app.llm import robust_ainvoke
-from app.llm_astrbot import AstrBotChatModel, _messages_to_payload, make_model_from_backend
+from app.llm_astrbot import AstrBotChatModel, _bot_umo, _messages_to_payload, make_model_from_backend
+from app.run_ctx import current_group_key
 
 
 def test_messages_to_payload_maps_roles():
@@ -55,9 +56,40 @@ async def test_astrbot_model_error_raises():
         await robust_ainvoke(m, [HumanMessage(content="q")], attempts=1)
 
 
-def test_astrbot_model_requires_provider_id():
+def test_astrbot_model_requires_provider_id_or_bot_ref():
     with pytest.raises(ValueError):
-        AstrBotChatModel("", "http://x")
+        AstrBotChatModel("", "http://x")  # 既无 provider_id 又无 bot_ref
+
+
+def test_bot_umo_swaps_platform_segment():
+    assert _bot_umo("botX", "telegram:GroupMessage:42") == "botX:GroupMessage:42"
+    assert _bot_umo("botX", "weird") == "weird"  # 非三段兜底
+
+
+async def test_astrbot_model_follow_bot_delegates_by_umo():
+    """S7.3b：follow-bot 模式按 current_group_key 构造 bot-umo 委托。"""
+    captured = {}
+
+    async def fake_send(url, payload):
+        captured["payload"] = payload
+        return {"ok": True, "text": "跟随 bot 回包"}
+
+    m = AstrBotChatModel(bridge_url="http://bridge:9876", bot_ref="botX", send=fake_send)
+    token = current_group_key.set("telegram:GroupMessage:42")
+    try:
+        msg = await robust_ainvoke(m, [HumanMessage(content="问题")], attempts=1)
+    finally:
+        current_group_key.reset(token)
+    assert msg.content == "跟随 bot 回包"
+    assert captured["payload"]["umo"] == "botX:GroupMessage:42"
+    assert "provider_id" not in captured["payload"]
+
+
+async def test_astrbot_model_follow_bot_without_group_key_raises():
+    m = AstrBotChatModel(bridge_url="http://x", bot_ref="botX", send=lambda u, p: None)
+    current_group_key.set(None)
+    with pytest.raises(RuntimeError):
+        await robust_ainvoke(m, [HumanMessage(content="q")], attempts=1)
 
 
 def test_make_model_from_backend_dispatch(monkeypatch):

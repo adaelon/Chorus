@@ -11,6 +11,7 @@ from __future__ import annotations
 from langchain_openai import ChatOpenAI
 
 from ..llm import make_chat_model
+from ..run_ctx import current_group_key
 from ..state import AgentSlot, GroupState, Msg
 from ._common import request_text
 from .extract import ClaimExtractor, default_claim_extractor
@@ -46,6 +47,7 @@ async def turn(
     slot = _speaker_slot(state)
     if slot is None:
         return {}
+    current_group_key.set(state.group_key)  # S7.3b：供 follow-bot 模型按 umo 委托
     gen = generate or default_generator(
         model or make_chat_model(), persona_provider, model_provider=model_provider
     )

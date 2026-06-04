@@ -436,10 +436,10 @@
 - 不做：前端/绑定（S7.3b/c）。
 - 判据：插件 `tests/test_llm_bridge.py`（by_id / by_umo / 两种 404 / 缺 prompt 或都缺 400）**18 passed**；orchestrator 全量 **181 passed, 2 skipped**（A3，未动 orchestrator）。
 
-**S7.3b 「跟随我的 bot」模型绑定**
-- 做：好友标记"模型跟随 AstrBot bot"（如 `llm_ref="@bot"` 哨兵 / 一个 mode 字段）；`ModelProvider` 对这类好友读其 `bot_ref` → 返回 `AstrBotChatModel`（按 bot/umo 委托，umo 来自起场 group_key）；`make_model_from_backend`/`model_provider_from` 加这条解析路径。
+**S7.3b 「跟随我的 bot」模型绑定 ✅**
+- 做：哨兵 `llm_ref="@bot"`（`FOLLOW_BOT_LLM_REF`）；`run_ctx.current_group_key` ContextVar（turn/fanout 注入 state.group_key）；`AstrBotChatModel` 双模式（provider_id | bot_ref，follow-bot 按 current_group_key 构造 `_bot_umo`=平台段换 bot_ref，桥按 umo 取 using-provider）；`model_provider_from` 对 `@bot`+有 bot_ref 返回 follow-bot model、无 bot_ref→None。
 - 不做：前端（S7.3c）。
-- 判据：`tests/` 标记好友 → provider 返回按 bot 委托的 AstrBotChatModel（注入假桥）+ 非标记不退化；`.venv` 全量绿（A3）。
+- 判据：`tests/infra/test_llm_astrbot.py`（_bot_umo / follow-bot by umo / 缺 gk 抛错 / 需 id|bot_ref）+ `test_model_provider.py`（@bot→model、无 bot_ref 回退、turn 注入 ctx）；`.venv` 全量 **186 passed, 2 skipped**（A3）。
 
 **S7.3c 前端：好友绑 AstrBot bot 一键**
 - 做：好友页「LLM 后端」下拉加一项「跟随我的 AstrBot bot（bot_ref）」；选中即同时用 bot_ref 作通道与模型，提示需 bot_ref 已填 + AstrBot 在跑。

@@ -13,6 +13,18 @@ from typing import Any
 from langchain_core.messages import AIMessageChunk
 
 from .llm import make_chat_model_from_backend
+from .run_ctx import current_group_key
+
+# 好友 `llm_ref` 的哨兵：模型跟随该好友的 AstrBot bot（S7.3b「整 bot 引用」C）。
+FOLLOW_BOT_LLM_REF = "@bot"
+
+
+def _bot_umo(bot_ref: str, group_key: str) -> str:
+    """把 group_key 的平台段换成 bot_ref → 该 bot 在该群的 umo（同 outbound 出站口径）。"""
+    parts = (group_key or "").split(":", 2)
+    if len(parts) == 3:
+        return f"{bot_ref}:{parts[1]}:{parts[2]}"
+    return group_key  # 非三段，兜底原样
 
 
 def _messages_to_payload(messages) -> dict:
@@ -35,12 +47,27 @@ def _messages_to_payload(messages) -> dict:
 
 
 class AstrBotChatModel:
-    """把 astream 委托给 AstrBot provider（经桥）。`send` 可注入以离线测（不碰网络）。"""
+    """把 astream 委托给 AstrBot provider（经桥）。`send` 可注入以离线测（不碰网络）。
 
-    def __init__(self, provider_id: str, bridge_url: str, *, send=None, timeout: float = 600.0) -> None:
-        if not provider_id:
-            raise ValueError("kind=astrbot 后端需填 provider_id")
+    两种模式（二选一）：
+    - `provider_id`（S7.1e）：显式 provider，桥按 id 取。
+    - `bot_ref`（S7.3b 整 bot 引用）：模型跟随该 bot——调用时按 `run_ctx.current_group_key` 构造
+      bot-umo（平台段换成 bot_ref），桥按 umo 取该 bot 在该群在用的 provider。
+    """
+
+    def __init__(
+        self,
+        provider_id: str = "",
+        bridge_url: str = "",
+        *,
+        bot_ref: str | None = None,
+        send=None,
+        timeout: float = 600.0,
+    ) -> None:
+        if not provider_id and not bot_ref:
+            raise ValueError("AstrBotChatModel 需 provider_id 或 bot_ref 之一")
         self.provider_id = provider_id
+        self.bot_ref = bot_ref
         self._url = bridge_url.rstrip("/") + "/llm"
         self._timeout = timeout
         self._send = send  # async (url, payload) -> dict
@@ -53,8 +80,17 @@ class AstrBotChatModel:
             resp.raise_for_status()
             return resp.json()
 
+    def _route(self) -> dict:
+        """选 provider 的入参：provider_id 直给；follow-bot 按当前会话 group_key 构造 bot-umo。"""
+        if self.provider_id:
+            return {"provider_id": self.provider_id}
+        gk = current_group_key.get()
+        if not gk:
+            raise RuntimeError("follow-bot 模型缺 group_key（节点未注入 run_ctx.current_group_key）")
+        return {"umo": _bot_umo(self.bot_ref or "", gk)}
+
     async def astream(self, messages, config=None):
-        payload = {"provider_id": self.provider_id, **_messages_to_payload(messages)}
+        payload = {**self._route(), **_messages_to_payload(messages)}
         send = self._send or self._http_send
         body = await send(self._url, payload)
         if isinstance(body, dict) and not body.get("ok", True):

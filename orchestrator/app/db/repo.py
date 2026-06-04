@@ -9,7 +9,7 @@ import time
 
 from sqlmodel import select
 
-from ..llm_astrbot import make_model_from_backend
+from ..llm_astrbot import FOLLOW_BOT_LLM_REF, AstrBotChatModel, make_model_from_backend
 from ..recipes.builtin import AUTO, FANOUT, ROUNDTABLE, ROUNDTABLE_CONTINUOUS
 from .models import Contact, Conversation, LLMBackend, Recipe
 
@@ -54,6 +54,14 @@ def model_provider_from(session_factory, *, cache: dict | None = None, bridge_ur
             c = await s.get(Contact, contact_id)
             if c is None or not c.llm_ref:
                 return None
+            # S7.3b 整 bot 引用：模型跟随该好友的 AstrBot bot（按 bot_ref 委托，umo 调用时取）。
+            if c.llm_ref == FOLLOW_BOT_LLM_REF:
+                if not c.bot_ref:
+                    return None  # 选了"跟随 bot"却没绑 bot_ref → 回退全局
+                key = f"{FOLLOW_BOT_LLM_REF}:{c.bot_ref}"
+                if key not in _cache:
+                    _cache[key] = AstrBotChatModel(bot_ref=c.bot_ref, bridge_url=bridge_url)
+                return _cache[key]
             b = await s.get(LLMBackend, c.llm_ref)
         if b is None:
             return None

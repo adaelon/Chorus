@@ -81,6 +81,47 @@ async def test_model_provider_from_unbound_backend_falls_back(tmp_path):
     assert await model_provider_from(sf)("ada") is None
 
 
+async def test_model_provider_from_follow_bot(tmp_path):
+    """S7.3b：好友 llm_ref='@bot' 且有 bot_ref → provider 返回 follow-bot AstrBotChatModel。"""
+    from app.llm_astrbot import FOLLOW_BOT_LLM_REF, AstrBotChatModel
+
+    sf = await _sf(tmp_path)
+    async with sf() as s:
+        s.add(Contact(id="ada", name="阿达", llm_ref=FOLLOW_BOT_LLM_REF, bot_ref="botX"))
+        s.add(Contact(id="noref", name="没绑", llm_ref=FOLLOW_BOT_LLM_REF))  # 选了跟随却没 bot_ref
+        await s.commit()
+    prov = model_provider_from(sf, bridge_url="http://bridge:9876")
+    m = await prov("ada")
+    assert isinstance(m, AstrBotChatModel) and m.bot_ref == "botX" and not m.provider_id
+    assert await prov("noref") is None  # 无 bot_ref → 回退全局
+
+
+async def test_turn_sets_current_group_key(tmp_path):
+    """S7.3b：turn 节点把 state.group_key 注入 run_ctx，供 follow-bot 模型按 umo 委托。"""
+    from app.nodes.schedule import NextSpeaker  # noqa: F401 - 仅说明语境
+    from app.nodes.turn import turn
+    from app.run_ctx import current_group_key
+    from app.state import AgentSlot, Candidate, GroupState
+
+    seen = {}
+
+    async def capturing_gen(slot, request, history, claims=None):
+        seen["gk"] = current_group_key.get()
+        return Candidate(contact_id=slot.contact_id, dimension=slot.dimension, text="x")
+
+    state = GroupState(
+        group_key="telegram:GroupMessage:99",
+        roster=[AgentSlot(contact_id="A")],
+        next_speaker="A",
+    )
+    await turn(state, generate=capturing_gen, extract=_fake_extract_one)
+    assert seen["gk"] == "telegram:GroupMessage:99"
+
+
+async def _fake_extract_one(text, speaker_id, turn_idx):
+    return []
+
+
 async def test_model_provider_from_astrbot_kind(tmp_path):
     """S7.1e：好友绑 kind=astrbot 后端 → provider 返回 AstrBotChatModel（委托桥）。"""
     from app.llm_astrbot import AstrBotChatModel

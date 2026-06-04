@@ -11,6 +11,7 @@ import asyncio
 from langchain_openai import ChatOpenAI
 
 from ..llm import make_chat_model
+from ..run_ctx import current_group_key
 from ..state import GroupState
 from ._common import request_text
 from .generate import GenerateFn, ModelProvider, PersonaProvider, default_generator
@@ -28,6 +29,7 @@ async def fanout(
 
     LangGraph 节点：返回的 dict 会被合并进 state（candidates channel）。
     """
+    current_group_key.set(state.group_key)  # S7.3b：供 follow-bot 模型按 umo 委托（gather 前设，任务继承上下文）
     gen = generate or default_generator(
         model or make_chat_model(), persona_provider, model_provider=model_provider
     )
