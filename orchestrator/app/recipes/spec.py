@@ -95,7 +95,7 @@ REGISTRY: dict[str, Primitive] = {
         turn,
         name="turn",
         kind="transform",
-        reads=("next_speaker", "roster", "history", "claims"),
+        reads=("next_speaker", "directed_active", "roster", "history", "claims"),
         writes=("history", "turns_since_human", "claims"),
         needs=("next_speaker",),  # 上游 router 必须先定下发言人
     ),
@@ -103,8 +103,8 @@ REGISTRY: dict[str, Primitive] = {
         schedule,
         name="schedule",
         kind="router",
-        reads=("pending_human", "turns_since_human", "max_turns_per_human", "roster", "claims", "history"),
-        writes=("next_speaker", "next_decision", "stop_reason"),
+        reads=("pending_human", "turns_since_human", "max_turns_per_human", "roster", "claims", "history", "directed_queue"),
+        writes=("next_speaker", "next_decision", "stop_reason", "directed_queue", "directed_active"),
         needs=("roster",),
         emits=("next_speaker", "yield_to_human", "stop"),
         budget=SCHEDULE_BUDGET,
@@ -124,7 +124,7 @@ REGISTRY: dict[str, Primitive] = {
         name="human_gate",
         kind="human",
         reads=("pending_human", "history", "turns_since_human"),
-        writes=("history", "pending_human", "turns_since_human", "next_decision"),
+        writes=("history", "pending_human", "turns_since_human", "next_decision", "directed_queue"),
         emits=("continue", "end"),  # 目标契约；路由出节点在 S5.4.0b
     ),
     "curate_gate": _p(

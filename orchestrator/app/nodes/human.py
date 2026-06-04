@@ -53,8 +53,14 @@ async def human_gate(state: GroupState) -> dict:
     if text:
         history.append(Msg(sender_id="human", sender_kind="human", text=text))
 
+    # §6.20 @定向插话：resume 带 `directed`（前端 chips 选 → contact_id 列表，避重名/解析坑）
+    # → 填 directed_queue，schedule 按序只让这几位修改（指令文本已作上面的 human 消息进 history）。
+    directed = signal.get("directed") if isinstance(signal, dict) else None
+
     # 清掉 stop_reason，避免回 schedule 后旧 reason 再触发同一条边。
     update: dict = {"history": history, "pending_human": None, "next_decision": "continue", "stop_reason": None}
+    if directed:
+        update["directed_queue"] = [str(c) for c in directed]
     # 有人类输入，或本次是预算闸触顶的让位 → 预算归零（否则回 schedule 立刻再触顶，死循环）。
     if had_pending or text or reason == "budget":
         update["turns_since_human"] = 0

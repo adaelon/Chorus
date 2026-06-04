@@ -53,7 +53,10 @@ ROUNDTABLE: dict = {
         {"from": "schedule", "when": {"field": "stop_reason", "op": "==", "value": "moderator"}, "to": "human_gate"},
         {"from": "schedule", "when": {"field": "stop_reason", "op": "==", "value": "budget"}, "to": "human_gate"},
         {"from": "schedule", "to": "synthesize"},  # else = 其它 stop（如 empty_roster）才自动收尾
-        {"from": "turn", "to": "human_gate"},
+        # §6.20 @定向批量不连锁：定向队列还有人 → 回 schedule 取下一个（按序跑完）；空 → 停回 human_gate。
+        # 不@时 directed_queue 恒空 → 仍是 turn→human_gate（现状，每轮让位）。
+        {"from": "turn", "when": {"field": "directed_queue", "op": "truthy"}, "to": "schedule"},
+        {"from": "turn", "to": "human_gate"},  # else
         {"from": "human_gate", "when": {"field": "next_decision", "op": "==", "value": "end"}, "to": "synthesize"},
         {"from": "human_gate", "to": "schedule"},  # else = continue
         {"from": "synthesize", "to": "END"},

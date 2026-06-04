@@ -95,7 +95,8 @@ async def test_moderator_pick_invalid_id_falls_back_to_first():
 
 async def test_schedule_node_maps_decision_to_delta():
     out = await schedule(_state(turns_since_human=1), pick=_pick_A)
-    assert out == {"next_speaker": "A", "next_decision": "next_speaker", "stop_reason": None}
+    # S9a：非定向调度额外落 directed_active=False（清掉上一轮定向标记，避免 turn 误框架）。
+    assert out == {"next_speaker": "A", "next_decision": "next_speaker", "stop_reason": None, "directed_active": False}
 
     out_stop = await schedule(_state(turns_since_human=6, max_turns_per_human=6), pick=_pick_A)
     assert out_stop["next_decision"] == "stop" and out_stop["stop_reason"] == "budget"

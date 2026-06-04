@@ -496,12 +496,13 @@
 
 > 人在环圆桌 `@ada1 改X` 只让 ada1 改、别人不插嘴；不@ 维持现状（主持人挑谁接）。多@批量按序跑完再回到人；修订追加、合成偏最新。@只在两轮间生效（不打断流式）。
 
-**S9a 引擎+配方：directed_queue + 定向调度 + 批量不连锁**
+**S9a 引擎+配方：directed_queue + 定向调度 + 批量不连锁 ✅**
 - 做（state）：`GroupState` 加 `directed_queue:list[str]`（+ 一个 directed 标记供 turn 框架）。
 - 做（节点）：`human_gate` 解析 interject 的 @目标 → 填 `directed_queue`（指令文本仍进 history）；`schedule` 优先级最前 `directed_queue` 非空 → pop → `NextSpeaker(directed)`（跳过主持人/预算）；`turn` 定向时 prompt 框架为"真人点名要你按〈指令〉修改"。
 - 做（配方）：`ROUNDTABLE` 加边 `turn when directed_queue 非空 → schedule / else → human_gate`（批量跑完再停、不连锁）。
 - 不做：合成去重（S9b）；前端 @ chips（S9c）；打断流式 barge-in。
 - 判据：`tests/` @单人→只他发言→回 human_gate（主持人不接力）；@多人→按序全发完才停；不@→维持主持人挑人；定向跳过预算闸；`.venv` 全量绿（A3）。
+- 落地：state 加 `directed_queue`/`directed_active`；@目标走 resume 结构化 `directed` 列表（前端 chips 选 contact_id，避文本解析坑），非靠文本解析；schedule 定向分支置最前跳主持人+预算闸；ROUNDTABLE turn 出边条件化（队列非空回 schedule 批量、空停 human_gate）。`tests/recipes/test_directed.py`（5 条）+ test_schedule delta 断言补 directed_active；relay 无 directed 恒空、零改全绿。`.venv` 全量 **195 passed, 2 skipped**。详见代码链路。
 
 **S9b 合成/点账本：修订追加偏最新 + 旧主张去重**
 - 做：被@者修订作新发言追加；`synthesize`/claims 投影偏该 speaker 最新一版、旧版去重（§6.11）。

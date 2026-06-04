@@ -57,6 +57,8 @@ class GroupState(BaseModel):
     pending_human: Msg | None = None
     next_speaker: str | None = None  # 下一个发言的 contact_id（S3.2 SCHEDULE 决定，TURN 消费）
     next_decision: str | None = None  # 路由决策：圆桌 next_speaker|yield_to_human|stop；auto fanout|speak|synthesize|stop（S5.2）
+    directed_queue: list[str] = Field(default_factory=list)  # §6.20 @定向插话：人点名的发言人队列（human_gate 填，schedule 按序 pop，跳过主持人/预算）
+    directed_active: bool = False  # §6.20 当前 turn 是否定向修订（schedule 写、turn 读作"真人点名修改"框架）
     stop_reason: str | None = None  # Stop 的原因（budget|moderator|plan_budget…）
     plan_steps: int = 0  # L3 auto 配方：主持人已组的原语步数（S5.2）
     max_plan_steps: int = 8  # auto 配方步数闸（防跑偏/死循环；每步=plan+原语 2 超步，留 LangGraph 递归余量）

@@ -106,13 +106,25 @@ async def schedule(
     budget: Budget | None = SCHEDULE_BUDGET,
 ) -> dict:
     """SCHEDULE 节点：跑 decide_next，把决策落成 state delta（供 S3.3 条件边路由）。"""
+    # §6.20 定向优先：directed_queue 非空 → pop 首个直接发言，**跳过主持人挑人与预算闸**
+    # （人已明确点名）。队列有界、turn 不回填——批量按序发完即空，不连锁（路由在 turn 出边）。
+    if state.directed_queue:
+        nxt, *rest = state.directed_queue
+        return {
+            "next_speaker": nxt,
+            "next_decision": "next_speaker",
+            "stop_reason": None,
+            "directed_queue": rest,
+            "directed_active": True,  # turn 据此框定"真人点名要你修改"
+        }
     decision = await decide_next(state, pick=pick, model=model, budget=budget)
     if isinstance(decision, NextSpeaker):
         return {
             "next_speaker": decision.contact_id,
             "next_decision": "next_speaker",
             "stop_reason": None,
+            "directed_active": False,
         }
     if isinstance(decision, YieldToHuman):
-        return {"next_speaker": None, "next_decision": "yield_to_human", "stop_reason": None}
-    return {"next_speaker": None, "next_decision": "stop", "stop_reason": decision.reason}
+        return {"next_speaker": None, "next_decision": "yield_to_human", "stop_reason": None, "directed_active": False}
+    return {"next_speaker": None, "next_decision": "stop", "stop_reason": decision.reason, "directed_active": False}

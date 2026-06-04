@@ -53,6 +53,9 @@ async def turn(
     )
     ext = extract or default_claim_extractor(model or make_chat_model())
     request = request_text(state)
+    if state.directed_active:
+        # §6.20：真人点名（@）要这位按指令修改自己的发言——框定为定向修订，而非泛泛接话。
+        request = f"真人点名要你按下面的指令修改你的发言（只针对你）：\n{request}"
     cand = await gen(slot, request, state.history, state.claims)
     msg = Msg(
         sender_id=slot.contact_id,
