@@ -53,13 +53,11 @@ async def _sf(tmp_path):
 
 
 async def test_model_provider_from_binds_caches_falls_back(tmp_path, monkeypatch):
-    monkeypatch.setenv("GPT_KEY", "sk-gpt")
-    monkeypatch.setenv("DS_KEY", "sk-ds")
     monkeypatch.setenv("LLM_STREAM_CHUNK_TIMEOUT", "0")  # 禁看门狗，免依赖完整 LLM_* 环境
     sf = await _sf(tmp_path)
     async with sf() as s:
-        s.add(LLMBackend(id="gpt", name="GPT", base_url="https://o/v1", api_key_env="GPT_KEY", model="gpt-4o"))
-        s.add(LLMBackend(id="ds", name="DeepSeek", base_url="https://d/v1", api_key_env="DS_KEY", model="deepseek-chat"))
+        s.add(LLMBackend(id="gpt", name="GPT", base_url="https://o/v1", api_key="sk-gpt", model="gpt-4o"))
+        s.add(LLMBackend(id="ds", name="DeepSeek", base_url="https://d/v1", api_key="sk-ds", model="deepseek-chat"))
         s.add(Contact(id="ada1", name="阿达1", llm_ref="gpt"))
         s.add(Contact(id="ada2", name="阿达2", llm_ref="ds"))
         s.add(Contact(id="ada3", name="阿达3"))  # 无 llm_ref

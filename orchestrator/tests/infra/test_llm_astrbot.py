@@ -61,10 +61,9 @@ def test_astrbot_model_requires_provider_id():
 
 
 def test_make_model_from_backend_dispatch(monkeypatch):
-    monkeypatch.setenv("K", "sk-x")
     monkeypatch.setenv("LLM_STREAM_CHUNK_TIMEOUT", "0")
     oai = make_model_from_backend(
-        LLMBackend(id="o", kind="openai", base_url="https://x/v1", api_key_env="K", model="m"),
+        LLMBackend(id="o", kind="openai", base_url="https://x/v1", api_key="sk-x", model="m"),
         bridge_url="http://x",
     )
     assert oai.__class__.__name__ == "ChatOpenAI"
@@ -76,5 +75,5 @@ def test_make_model_from_backend_dispatch(monkeypatch):
 
     # kind 缺省按 openai（向后兼容）
     assert make_model_from_backend(
-        LLMBackend(id="c", base_url="https://x/v1", api_key_env="K", model="m"), bridge_url="http://x"
+        LLMBackend(id="c", base_url="https://x/v1", api_key="sk-x", model="m"), bridge_url="http://x"
     ).__class__.__name__ == "ChatOpenAI"

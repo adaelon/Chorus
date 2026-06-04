@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from collections.abc import Sequence
 from typing import Any
 
@@ -48,30 +47,20 @@ def make_chat_model(**overrides: Any) -> ChatOpenAI:
     return ChatOpenAI(**params)
 
 
-class MissingApiKeyEnv(RuntimeError):
-    """LLM 后端的 api_key_env 指向的环境变量缺失/为空（key 不落库，须由环境提供）。"""
-
-
-def resolve_api_key(api_key_env: str, *, who: str = "?") -> str:
-    """从环境变量名解析真实 key；缺失/为空抛 MissingApiKeyEnv（含后端标识与变量名）。"""
-    key = os.environ.get(api_key_env, "") if api_key_env else ""
-    if not key:
-        raise MissingApiKeyEnv(
-            f"LLM 后端 {who!r} 的 api_key_env={api_key_env!r} 未在环境变量中找到（或为空）；"
-            f"请设置该环境变量后重试（key 不落库、不进 git）。"
-        )
-    return key
+class MissingApiKey(RuntimeError):
+    """LLM 后端未填 api_key（kind=openai 必填；直接粘贴存本地 DB）。"""
 
 
 def make_chat_model_from_backend(backend: Any, **overrides: Any) -> ChatOpenAI:
     """按 `LLMBackend` 记录造 ChatOpenAI（S7.1a，§6.18：每好友独立模型）。
 
-    api_key 从 `backend.api_key_env` 指向的**环境变量**读（非明文落库）；该变量缺失/为空时
-    抛 `MissingApiKeyEnv`（清晰报错，含后端名与变量名）。`backend` 鸭子类型：需有
-    name/base_url/api_key_env/model/temperature/max_tokens。
+    api_key 直接取 `backend.api_key`（粘贴存本地 DB，§6.18 修订）；为空抛 `MissingApiKey`（清晰
+    报错，含后端名）。`backend` 鸭子类型：需有 name/base_url/api_key/model/temperature/max_tokens。
     """
     who = getattr(backend, "name", "") or getattr(backend, "id", "?")
-    api_key = resolve_api_key(getattr(backend, "api_key_env", "") or "", who=who)
+    api_key = getattr(backend, "api_key", "") or ""
+    if not api_key:
+        raise MissingApiKey(f"LLM 后端 {who!r} 未填 API Key（请在「模型」页粘贴）。")
     params: dict[str, Any] = {
         "base_url": backend.base_url,
         "api_key": api_key,

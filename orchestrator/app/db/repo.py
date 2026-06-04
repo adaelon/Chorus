@@ -44,8 +44,8 @@ def model_provider_from(session_factory, *, cache: dict | None = None, bridge_ur
     按 `Contact.llm_ref → LLMBackend` 造该好友独立的模型（`make_model_from_backend` 按 kind 分流：
     openai→ChatOpenAI / astrbot→AstrBotChatModel 桥委托），**按 backend.id 缓存**（不每轮新建，
     否则连接数爆炸）。无 llm_ref / 后端已删 → 返回 None（generate 回退全局默认 model，现状不退化）。
-    后端 api_key_env 缺环境变量时抛 MissingApiKeyEnv（清晰报错，不静默回退——用户明确绑了后端却
-    不可用，应显式暴露）。缓存按 backend.id：CRUD 改后端配置后进程内仍旧值，重启生效（MVP 取舍）。
+    后端未填 api_key 时抛 MissingApiKey（清晰报错，不静默回退——用户明确绑了后端却不可用，应显式
+    暴露）。缓存按 backend.id：CRUD 改后端配置后进程内仍旧值，重启生效（MVP 取舍）。
     """
     _cache: dict = {} if cache is None else cache
 

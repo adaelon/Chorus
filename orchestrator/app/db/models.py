@@ -77,8 +77,8 @@ class LLMBackend(SQLModel, table=True):
     """LLM 后端注册表（S7.1a，§6.18）：每好友独立模型的引用目标。
 
     `Contact.llm_ref` 指向本表 id；多好友可共享一个后端（同一 key 改一处）。
-    **api_key 不落库**：只存 `api_key_env`（环境变量名，如 "DEEPSEEK_KEY"），真实 key 走环境变量，
-    仓库可完整自包含、不泄密（延续 cmd_config 不进 git 的教训）。
+    `api_key` 直接存本地 DB（如 AstrBot）——注册表 sqlite 已 gitignore，不进仓库，单机自用不泄密
+    （§6.18 修订：原 api_key_env 环境变量引用对单机过度设计，已简化为直接粘贴）。
     """
 
     __tablename__ = "llm_backends"
@@ -87,7 +87,7 @@ class LLMBackend(SQLModel, table=True):
     name: str = ""
     kind: str = "openai"  # openai（独立自包含）| astrbot（委托 AstrBot provider），§6.18+ S7.1e
     base_url: str = ""
-    api_key_env: str = ""  # 环境变量名（非明文 key）；kind=openai 构造 model 时从 os.environ 读
+    api_key: str = ""  # 直接粘贴的真实 key（kind=openai 用）；DB 已 gitignore
     model: str = ""
     temperature: float = 0.75
     max_tokens: int | None = None

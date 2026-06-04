@@ -29,9 +29,10 @@
         <template v-if="form.kind !== 'astrbot'">
           <v-text-field v-model="form.base_url" label="base_url（OpenAI 兼容 /v1）" variant="outlined" />
           <v-text-field
-            v-model="form.api_key_env"
-            label="api_key_env（环境变量名，非明文 key）"
-            placeholder="DEEPSEEK_KEY"
+            v-model="form.api_key"
+            label="API Key（直接粘贴你的 key）"
+            placeholder="sk-..."
+            type="password"
             variant="outlined"
           />
           <v-combobox
@@ -42,7 +43,7 @@
             :loading="probing"
           >
             <template #append-inner>
-              <v-btn size="small" variant="text" :disabled="!form.base_url || !form.api_key_env" @click="probe">拉取模型</v-btn>
+              <v-btn size="small" variant="text" :disabled="!form.base_url || !form.api_key" @click="probe">拉取模型</v-btn>
             </template>
           </v-combobox>
           <v-row>
@@ -92,7 +93,7 @@
         :subtitle="
           b.kind === 'astrbot'
             ? `类型:astrbot · 委托 provider:${b.provider_id || '—'}`
-            : `类型:openai · model:${b.model || '—'} · base_url:${b.base_url || '—'} · key 环境变量:${b.api_key_env || '—'} · temp:${b.temperature}`
+            : `类型:openai · model:${b.model || '—'} · base_url:${b.base_url || '—'} · key:${b.api_key ? '已设' : '未设'} · temp:${b.temperature}`
         "
       >
         <template #append>
@@ -125,14 +126,14 @@ const probing = ref(false)
 const testResult = ref(null) // { ok, reply?, error? }
 const modelOptions = ref([])
 
-const blank = () => ({ id: '', name: '', kind: 'openai', base_url: '', api_key_env: '', model: '', temperature: 0.75, max_tokens: null, provider_id: '' })
+const blank = () => ({ id: '', name: '', kind: 'openai', base_url: '', api_key: '', model: '', temperature: 0.75, max_tokens: null, provider_id: '' })
 const form = ref(blank())
 
 // 测试连通可用条件：openai 需 base_url/key/model 齐；astrbot 需 provider_id。
 const canTest = computed(() =>
   form.value.kind === 'astrbot'
     ? !!form.value.provider_id
-    : !!(form.value.base_url && form.value.api_key_env && form.value.model),
+    : !!(form.value.base_url && form.value.api_key && form.value.model),
 )
 
 function resetForm() {
@@ -160,7 +161,7 @@ async function probe() {
   probing.value = true
   error.value = ''
   try {
-    const r = await probeLlmModels({ base_url: form.value.base_url, api_key_env: form.value.api_key_env })
+    const r = await probeLlmModels({ base_url: form.value.base_url, api_key: form.value.api_key })
     if (r.ok) {
       modelOptions.value = r.models
       if (!r.models.length) error.value = '该后端没返回模型列表，请手填 model'
@@ -206,7 +207,7 @@ async function save() {
 
 function edit(b) {
   form.value = {
-    id: b.id, name: b.name, kind: b.kind || 'openai', base_url: b.base_url, api_key_env: b.api_key_env,
+    id: b.id, name: b.name, kind: b.kind || 'openai', base_url: b.base_url, api_key: b.api_key || '',
     model: b.model, temperature: b.temperature, max_tokens: b.max_tokens, provider_id: b.provider_id || '',
   }
   editing.value = true

@@ -339,15 +339,15 @@ class Message(SQLModel):     # 群历史(=短期记忆)
 Contact { id,name,title,persona_style,base_stance,reputation   # 身份:平台/模型无关、可移植
           channel:{adapter,account_ref}     # 出站绑定 → 解耦平台
           llm_ref:str }                      # 推理绑定 → 解耦模型
-LLMBackend { id,name,base_url,api_key_env,model,temperature,max_tokens }  # 独立注册表
+LLMBackend { id,name,base_url,api_key,model,temperature,max_tokens }  # 独立注册表（api_key 直接存）
 ChannelDriver(adapter)  # 统一接口 send(group_key,account_ref,text)；AstrBot 桥退化成一个 driver
 ```
 - **维度一·平台解耦（轻量 router）**：`bot_ref:str` → `channel:{adapter,account_ref}`（`adapter` 选驱动、`account_ref`=原 bot_ref）。`OutboundClient` 从 AstrBot 专用客户端升级为 **router**：按 `contact.channel.adapter` 派给对应 driver。`group_key` 重定义为 **transport 不透明令牌**（解释权归 adapter；编排层本就只透传不解析）——换平台 = 加 driver + 改 contact 的 adapter，`group_key↔平台 session` 的映射归 adapter 内部。
 - **维度二·模型解耦（每好友独立 LLM）**：引入 **`ModelProvider = (contact_id) -> ChatModel`**，与 `PersonaProvider` 对称。`generate/turn` 里 `model = await model_provider(slot.contact_id)` 再 astream；模型实例**按 binding 缓存**（不每轮新建）。无绑定 → 回退全局默认 model（现状不退化）。`Contact.llm_ref → LLMBackend` 独立注册表：多好友可共享一后端（同一 key 改一处）。
-- **密钥**：`LLMBackend` 只存 `api_key_env`（变量名，如 `"DEEPSEEK_KEY"`），真实 key 走环境变量——仓库可完整自包含、不泄密（延续 cmd_config 不进 git 的教训）。
+- **密钥（§6.18 修订 2026-06-04）**：`LLMBackend.api_key` **直接粘贴存本地 DB**（如 AstrBot）。原设计存 `api_key_env`（环境变量名、真实 key 走环境）对单机自用是**过度设计**——逼用户另设环境变量、UI 不直观；且注册表 sqlite 本就 `*.sqlite` gitignore、不进仓库，直接存 key 不泄密到 git。要把 DB 文件分享给别人才有泄密风险（本地产品可接受，同 AstrBot cmd_config）。
 **否决**：
 - LLM 内联进 Contact（base_url/key/model 直存）：key 散落、同后端重复配、扩展性差。引用式 + 注册表更通用（§偏好通用可扩展）。
-- key 明文落 DB：DB 文件一旦进仓库/被复制即泄密。env 引用更安全。
+- ~~key 明文落 DB~~（原否决，2026-06-04 推翻）：DB 已 gitignore 不进仓库，直接存 key 对单机最易用；env 引用反成 UX 负担。env 引用作为可选高级模式留待"分享 DB/CI"场景再补。
 - 引入内部 `conversation_id` 映射层（重）：最彻底但要改 `group_key` 全链路，工作量大；当前编排层未解析 group_key，轻量重定义已够解耦，留待真接非 AstrBot 平台时再上。
 **命门**：对称之美——出站靠 `channel` 解耦平台、推理靠 `llm_ref` 解耦模型、人设始终中立，好友成为换 IM/换模型都不动的"数字人格"。`ModelProvider` 必须缓存（按 backend 去重），否则每轮新建 ChatOpenAI 连接爆炸。`channel` 迁移要兼容旧 `bot_ref`（adapter 缺省 `astrbot`、account_ref=旧值）。
 **何时回头**：真要接第二个 IM 平台时，落第一个非 astrbot driver；要 conversation_id 稳定映射时再上重方案。
@@ -356,11 +356,11 @@ ChannelDriver(adapter)  # 统一接口 send(group_key,account_ref,text)；AstrBo
 #### §6.18+ 细化（2026-06-04）：LLMBackend kind 化 + 配置可验证
 学 AstrBot 的 provider 配置流程（`dashboard/routes/config.py`：`/provider/template` 类型模板 · `/check_one` 测试=`provider.test()` 打一句 `REPLY PONG ONLY` · `/model_list` 拉模型列表）。两点改进：
 
-- **配置可验证（解决"裸填、判断不了对错"）**：不照搬 AstrBot 全类型模板（我们引擎是 ChatOpenAI／OpenAI 兼容，deepseek/kimi/openrouter/groq/ollama… 都走 `/v1`，一个 openai 兼容类型≈全覆盖）。只加性价比最高的两件：① **测试端点**（解析 `api_key_env` 真 key → 真打一次 ping → 绿/红立判，仿 check_one）；② **拉模型列表**（`GET {base_url}/v1/models` 能拉就下拉选、拉不到回退手填，仿 model_list）。base_url 预设/全类型模板暂不做。
+- **配置可验证（解决"裸填、判断不了对错"）**：不照搬 AstrBot 全类型模板（我们引擎是 ChatOpenAI／OpenAI 兼容，deepseek/kimi/openrouter/groq/ollama… 都走 `/v1`，一个 openai 兼容类型≈全覆盖）。只加性价比最高的两件：① **测试端点**（用直填的 `api_key` → 真打一次 ping → 绿/红立判，仿 check_one）；② **拉模型列表**（`GET {base_url}/v1/models` 能拉就下拉选、拉不到回退手填，仿 model_list）。base_url 预设/全类型模板暂不做。
 - **LLMBackend kind 化（"AstrBot 当后端"）**：让 llm 绑定与 channel **完全对称**——都是 kind/adapter 化的可插拔绑定。
   ```
   LLMBackend { id,name, kind,                       # kind ∈ {openai, astrbot, ...}
-               base_url,api_key_env,model,temperature,max_tokens,   # kind=openai 用
+               base_url,api_key,model,temperature,max_tokens,   # kind=openai 用（api_key 直存）
                provider_id }                          # kind=astrbot 用
   ```
   - `kind=openai`（现状默认）：`make_chat_model_from_backend` 造 ChatOpenAI。**自包含、不依赖 AstrBot**——S6「pip 单机不碰 telegram 也能用」的命根，必须保留。

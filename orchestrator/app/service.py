@@ -43,7 +43,7 @@ from .nodes.clarify import ClarifyFn
 from .nodes.curate import Eliminate, Pick, Reassign, ReputationAdjuster
 from .nodes.extract import ClaimExtractor
 from .nodes.frame import AssignFn
-from .llm import ping_model, probe_models, resolve_api_key
+from .llm import ping_model, probe_models
 from .llm_astrbot import make_model_from_backend
 from .nodes.generate import GenerateFn, ModelProvider, PersonaProvider
 from .nodes.plan import PlanFn
@@ -147,14 +147,14 @@ class ContactIn(BaseModel):
 class LLMBackendIn(BaseModel):
     """LLM 后端写入（S7.1a，§6.18）：每好友独立模型的引用目标。
 
-    **不收明文 key**：只 `api_key_env`（环境变量名），真实 key 走环境变量（不入库/不进 git）。
+    `api_key` 直接粘贴存本地 DB（注册表 sqlite 已 gitignore，不进仓库；§6.18 修订）。
     """
 
     id: str
     name: str = ""
     kind: str = "openai"  # openai | astrbot（S7.1e）
     base_url: str = ""
-    api_key_env: str = ""
+    api_key: str = ""  # 直接粘贴，存本地 DB（§6.18 修订）
     model: str = ""
     temperature: float = 0.75
     max_tokens: int | None = None
@@ -168,7 +168,7 @@ class LLMBackendCheck(BaseModel):
     name: str = ""
     kind: str = "openai"
     base_url: str = ""
-    api_key_env: str = ""
+    api_key: str = ""
     model: str = ""
     temperature: float = 0.75
     max_tokens: int | None = None
@@ -849,9 +849,10 @@ def create_app(
     @app.post("/llm-backends/probe-models")
     async def probe_llm_models(b: LLMBackendCheck):
         """拉模型列表（S7.1d，仿 AstrBot model_list）：GET {base_url}/models→{ok,models|error}。"""
+        if not b.api_key:
+            return {"ok": False, "models": [], "error": "未填 API Key"}
         try:
-            key = resolve_api_key(b.api_key_env, who=b.name or b.id or "probe")
-            return {"ok": True, "models": await probe_models(b.base_url, key)}
+            return {"ok": True, "models": await probe_models(b.base_url, b.api_key)}
         except Exception as e:  # noqa: BLE001
             return {"ok": False, "models": [], "error": str(e) or e.__class__.__name__}
 

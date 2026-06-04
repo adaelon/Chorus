@@ -27,7 +27,7 @@ async def test_init_models_adds_missing_columns(tmp_path):
 
     async with engine.begin() as conn:
         cols = await conn.run_sync(lambda c: {col["name"] for col in sa_inspect(c).get_columns("llm_backends")})
-    assert {"kind", "provider_id", "base_url", "api_key_env", "model", "temperature", "max_tokens"} <= cols
+    assert {"kind", "provider_id", "base_url", "api_key", "model", "temperature", "max_tokens"} <= cols
 
     # 补列带默认值：旧行可正常读，且能用 ORM 增查（不再 OperationalError）
     sf = make_session_factory(engine)

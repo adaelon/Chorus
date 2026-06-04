@@ -130,7 +130,7 @@ export const validateRecipe = (graph) =>
 export const recipeRunStream = (recipe_id, group_key, request, roster, handlers) =>
   streamPost('/recipe/run', { recipe_id, group_key, request, roster }, handlers)
 
-// LLM 后端注册表 CRUD（S7.1c，§6.18）：每好友独立模型的引用目标。api_key 不传明文，只 api_key_env。
+// LLM 后端注册表 CRUD（S7.1c，§6.18）：每好友独立模型的引用目标。api_key 直接粘贴存本地 DB（已 gitignore）。
 export const listLlmBackends = () => brainApi.get('/llm-backends').then((r) => r.data)
 export const createLlmBackend = (b) => brainApi.post('/llm-backends', b).then((r) => r.data)
 export const updateLlmBackend = (id, b) => brainApi.put(`/llm-backends/${id}`, b).then((r) => r.data)
