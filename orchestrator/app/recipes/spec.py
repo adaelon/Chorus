@@ -29,7 +29,7 @@ from ..nodes.frame import frame
 from ..nodes.human import human_gate
 from ..nodes.plan import PLAN_BUDGET, plan
 from ..nodes.schedule import SCHEDULE_BUDGET, schedule
-from ..nodes.synthesize import synthesize
+from ..nodes.synthesize import produce, synthesize
 from ..nodes.turn import turn
 from ..state import GroupState
 
@@ -143,6 +143,13 @@ REGISTRY: dict[str, Primitive] = {
         reads=("claims", "history", "picked", "candidates"),
         writes=("output",),
     ),  # S5.4.0e 已合一：按 compose/claims/candidates 分流（圆桌主笔 / 扇出汇候选 / 兜底）
+    "produce": _p(
+        produce,
+        name="produce",
+        kind="transform",
+        reads=("claims", "history", "picked", "candidates"),
+        writes=("output",),
+    ),  # S10a 出产物（§6.21）：把 task 当生产任务书交付产物，与 synthesize（出结论）同形、异脑
 }
 
 

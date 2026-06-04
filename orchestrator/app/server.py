@@ -14,7 +14,7 @@ import uvicorn
 from .llm import make_chat_model
 from .nodes.clarify import default_clarifier
 from .nodes.plan import default_planner
-from .nodes.synthesize import default_composer
+from .nodes.synthesize import default_composer, default_produce_composer
 from .recipes import default_recipe_planner, default_recipe_selector
 from .service import create_app
 
@@ -23,6 +23,7 @@ _model = make_chat_model()
 app = create_app(
     clarify_assess=default_clarifier(_model),
     compose=default_composer(_model),
+    compose_produce=default_produce_composer(_model),  # S10a 出产物主笔（§6.21）
     planner=default_planner(_model),  # L3 auto：供 /recipe/run 跑库内 auto 配方（S5.4.2b）
     recipe_selector=default_recipe_selector(_model),  # L2 荐配方（S5.1）
     recipe_planner=default_recipe_planner(_model),  # L3 AI 搭配方（S5.5）

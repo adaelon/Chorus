@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from .auto import build_auto_recipe
-from .builtin import AUTO, FANOUT, ROUNDTABLE, ROUNDTABLE_CONTINUOUS
+from .builtin import AUTO, FANOUT, ROUNDTABLE, ROUNDTABLE_CONTINUOUS, ROUNDTABLE_PRODUCE
 from .compile import compile_recipe
 from .cond import check_cond, eval_cond
 from .fanout import build_fanout_recipe
@@ -39,6 +39,7 @@ __all__ = [
     "FANOUT",
     "ROUNDTABLE",
     "ROUNDTABLE_CONTINUOUS",
+    "ROUNDTABLE_PRODUCE",
     "AUTO",
     "select_recipe",
     "default_recipe_selector",

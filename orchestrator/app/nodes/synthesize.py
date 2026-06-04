@@ -19,6 +19,7 @@ from langchain_openai import ChatOpenAI
 
 from ..llm import robust_ainvoke
 from ..state import GroupState
+from ._common import task_text
 
 
 # 圆桌主笔：(state) -> 综合产出文本。可注入以离线测试；None 时走确定性兜底。
@@ -60,6 +61,52 @@ def default_composer(model: ChatOpenAI) -> ComposeFn:
         return content if isinstance(content, str) else str(content)
 
     return compose
+
+
+def default_produce_composer(model: ChatOpenAI) -> ComposeFn:
+    """出产物主笔（§6.21）：把原始 task 当生产任务书、讨论要点当约束 → 交付产物本身。
+
+    与 `default_composer`（出结论=收敛共识/分歧）相对：produce 不复述讨论，而是**执行任务**，
+    直接给用户要的那个东西（prompt/方案/代码/文案…）。要点是输入与约束，不是结论。
+    """
+
+    async def compose(state: GroupState) -> str:
+        task = task_text(state) or "（未给出明确诉求）"
+        points = "\n".join(f"- {c.speaker_id}：{c.text}" for c in state.claims) or "（暂无要点）"
+        recent = "\n".join(
+            f"{m.sender_id}（{m.sender_kind}）：{m.text}" for m in state.history[-8:]
+        )
+        system = (
+            "你是主笔。请基于圆桌讨论的要点，直接产出用户真正要的那个东西本身——"
+            "他要 prompt 就写出一份可直接使用的 prompt，要方案就给方案，要文案/代码就给文案/代码。"
+            "讨论要点是你的输入与约束，不是结论：不要复述讨论过程、不要写成“共识/分歧”会议纪要。"
+            "先用一句话点明“我要交付的是：___”，紧接着给出产物本身。"
+        )
+        user = (
+            f"用户最初的诉求：\n{task}\n\n"
+            f"圆桌讨论要点（带归属，作为产物的约束/素材）：\n{points}\n\n"
+            f"最近发言（原文）：\n{recent}"
+        )
+        resp = await robust_ainvoke(
+            model, [SystemMessage(content=system), HumanMessage(content=user)]
+        )
+        content = resp.content
+        return content if isinstance(content, str) else str(content)
+
+    return compose
+
+
+async def produce(state: GroupState, *, compose_produce: ComposeFn | None = None) -> dict:
+    """出产物原语（§6.21）：交付用户要的产物本身（非讨论纪要）。
+
+    与 `synthesize`（出结论）同形（transform、写 output），区别只在主笔的脑子：用
+    `compose_produce`（task 当生产任务书）。dep 键特意区别于 synthesize 的 `compose`，
+    使编译器把"出产物主笔"灌进本节点、把"出结论主笔"灌进 synthesize。无 composer
+    （离线/未配置）→ 退化为确定性兜底（claims 归并），不抛错。
+    """
+    if compose_produce is not None:
+        return {"output": await compose_produce(state)}
+    return {"output": _fallback_compose(state)}
 
 
 async def synthesize(state: GroupState, *, compose: ComposeFn | None = None) -> dict:

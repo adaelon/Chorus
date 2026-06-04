@@ -386,6 +386,7 @@ def create_app(
     pick: PickFn | None = None,
     planner: PlanFn | None = None,
     compose: ComposeFn | None = None,
+    compose_produce: ComposeFn | None = None,  # S10a 出产物主笔（§6.21）；None=离线兜底
     recipe_selector: RecipeSelector | None = None,
     recipe_planner: RecipePlanner | None = None,
     bridge_url: str = "http://127.0.0.1:9876",
@@ -461,6 +462,7 @@ def create_app(
                 "pick": pick,
                 "planner": planner,
                 "compose": compose,
+                "compose_produce": compose_produce,  # S10a：/recipe/run 跑 roundtable_produce 时注入
                 "assess": clarify_assess,
             }
 

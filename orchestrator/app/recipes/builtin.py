@@ -63,6 +63,35 @@ ROUNDTABLE: dict = {
     ],
 }
 
+# 圆桌·出产物（§6.21，S10a）：同 ROUNDTABLE，但末端 synthesize→produce——交付产物本身
+# （把原始 task 当生产任务书），而非"共识/分歧"会议纪要。@定向/结束权归人等边一并沿用。
+ROUNDTABLE_PRODUCE: dict = {
+    "recipe": "roundtable_produce", "version": 1,
+    "nodes": [
+        {"id": "clarify", "use": "clarify"},
+        {"id": "frame", "use": "frame"},
+        {"id": "schedule", "use": "schedule"},
+        {"id": "turn", "use": "turn"},
+        {"id": "human_gate", "use": "human_gate"},
+        {"id": "produce", "use": "produce"},
+    ],
+    "edges": [
+        {"from": "START", "to": "clarify"},
+        {"from": "clarify", "to": "frame"},
+        {"from": "frame", "to": "schedule"},
+        {"from": "schedule", "when": {"field": "next_decision", "op": "==", "value": "next_speaker"}, "to": "turn"},
+        {"from": "schedule", "when": {"field": "next_decision", "op": "==", "value": "yield_to_human"}, "to": "human_gate"},
+        {"from": "schedule", "when": {"field": "stop_reason", "op": "==", "value": "moderator"}, "to": "human_gate"},
+        {"from": "schedule", "when": {"field": "stop_reason", "op": "==", "value": "budget"}, "to": "human_gate"},
+        {"from": "schedule", "to": "produce"},  # else = 其它 stop（如 empty_roster）
+        {"from": "turn", "when": {"field": "directed_queue", "op": "truthy"}, "to": "schedule"},
+        {"from": "turn", "to": "human_gate"},  # else
+        {"from": "human_gate", "when": {"field": "next_decision", "op": "==", "value": "end"}, "to": "produce"},
+        {"from": "human_gate", "to": "schedule"},  # else = continue
+        {"from": "produce", "to": "END"},
+    ],
+}
+
 # 圆桌（自动连续，无人在环）：CLARIFY→FRAME→SCHEDULE⇄TURN→…→SYNTHESIZE
 ROUNDTABLE_CONTINUOUS: dict = {
     "recipe": "roundtable_continuous", "version": 1,

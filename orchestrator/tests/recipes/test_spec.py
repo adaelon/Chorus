@@ -19,10 +19,10 @@ def test_registry_is_self_consistent():
 
 
 def test_registry_covers_expected_primitives():
-    """登记的就是 §6.16 那 9 个用户可见原语（extract/generate/纯 curate 不入）。"""
+    """登记的用户可见原语（extract/generate/纯 curate 不入）；S10a 加 produce（出产物）。"""
     assert set(REGISTRY) == {
         "clarify", "frame", "fanout", "turn",
-        "schedule", "plan", "human_gate", "curate_gate", "synthesize",
+        "schedule", "plan", "human_gate", "curate_gate", "synthesize", "produce",
     }
 
 

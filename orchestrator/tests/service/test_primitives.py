@@ -17,10 +17,10 @@ def test_primitives_endpoint(tmp_path):
         r = client.get("/primitives")
         assert r.status_code == 200
         prims = {p["name"]: p for p in r.json()}
-        # 9 个用户可见原语全在
+        # 用户可见原语全在（S10a 加 produce 出产物）
         assert set(prims) == {
             "clarify", "frame", "fanout", "turn",
-            "schedule", "plan", "human_gate", "curate_gate", "synthesize",
+            "schedule", "plan", "human_gate", "curate_gate", "synthesize", "produce",
         }
         # 契约字段：kind / needs / emits / budget
         assert prims["turn"]["kind"] == "transform"
