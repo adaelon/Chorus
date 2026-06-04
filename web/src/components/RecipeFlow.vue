@@ -6,15 +6,7 @@
            避免把互斥分支（如 deliver→{出产物|出结论}）误画成线性顺序 -->
       <div v-if="!conns[i]" class="conn">↓</div>
       <div v-else class="conn-branch">
-        <span class="bl-head">↳ 分支落点</span>
-        <span v-for="(s, k) in conns[i].srcs" :key="k" class="bl-src">
-          <template v-if="k">·</template>
-          <span class="bl-cond">
-            <template v-if="s.cond">当「{{ s.cond }}」</template>
-            <template v-else-if="s.isElse">否则</template>
-          </span>
-          来自 {{ s.fromLabel }}
-        </span>
+        <span class="bl-head">↳ 由此到达：</span>{{ conns[i].text }}
       </div>
       <v-card variant="outlined" class="node" :class="kindClass(n)">
         <div class="node-head">
@@ -76,19 +68,24 @@ const ordered = computed(() => {
 const orderIndex = computed(() => Object.fromEntries(ordered.value.map((n, i) => [n.id, i])))
 
 // 每张卡的"上方连接符"：null=与上一张卡有真实顺序边（画 ↓）；否则是分支落点（来自上游分叉，
-// 与上一张卡之间没有边）——列出真实入边的来源/条件，避免互斥分支被竖排误读成线性流。
+// 与上一张卡之间没有边）——把真实入边写成人话短句，避免互斥分支被竖排误读成线性流。
+// 每条入边渲染成「『来源卡』的『条件』分支」；按上游就近排序（最近的分叉在前）。
 const conns = computed(() =>
   ordered.value.map((n, i) => {
     const prevId = i === 0 ? 'START' : ordered.value[i - 1].id
     if (edges.value.some((e) => e.from === prevId && e.to === n.id)) return null
+    const oi = orderIndex.value
     const srcs = edges.value
       .filter((e) => e.to === n.id)
-      .map((e) => ({
-        fromLabel: e.from === 'START' ? '开始' : label(nodeById.value[e.from] || { use: e.from }),
-        cond: humanizeWhen(e.when),
-        isElse: !e.when && edges.value.some((x) => x.from === e.from && x.when),
-      }))
-    return { srcs }
+      .map((e) => {
+        const fromLabel = e.from === 'START' ? '开始' : label(nodeById.value[e.from] || { use: e.from })
+        const cond = humanizeWhen(e.when)
+        const isElse = !e.when && edges.value.some((x) => x.from === e.from && x.when)
+        const tail = cond ? `的「${cond}」分支` : isElse ? '的「否则」分支' : ''
+        return { text: `${fromLabel}${tail}`, order: e.from === 'START' ? -1 : (oi[e.from] ?? -1) }
+      })
+      .sort((a, b) => b.order - a.order)
+    return { text: srcs.map((s) => s.text).join('，或 ') }
   }),
 )
 
@@ -144,13 +141,6 @@ function branchesOf(id) {
 }
 .conn-branch .bl-head {
   font-weight: 600;
-  margin-right: 6px;
-}
-.conn-branch .bl-cond {
-  font-weight: 500;
-}
-.conn-branch .bl-src {
-  opacity: 0.9;
 }
 .node {
   width: 100%;
