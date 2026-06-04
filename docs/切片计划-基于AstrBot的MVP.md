@@ -431,10 +431,10 @@
 
 > 好友 ≡ 一个 AstrBot bot：指一个引用同时拿「通道(以该 bot 发言)+模型(该 bot 在用 provider)」，省去分别配 channel/llm；Chorus 引擎（人设/维度/点账本/合成）原样保留。复用 S4.3 的 bot_ref（=channel）+ S7.1e 的桥 `/llm` + AstrBotChatModel。**否决 B 整 bot 自治（掏空引擎）。** 这类好友硬绑 AstrBot、不能单机——故 S7.1/S7.2 仍保留供单机与引擎自身 LLM。
 
-**S7.3a 桥 `/llm` 支持按 bot/umo 取 using-provider**
-- 做：`llm_bridge.do_llm` 兼容两种入参——显式 `provider_id`（S7.1e）或 `umo`（取 `Context.get_using_provider(umo)`=该 bot 在该群用的 provider）；main.py 透传。
+**S7.3a 桥 `/llm` 支持按 bot/umo 取 using-provider ✅**
+- 做：`llm_bridge.do_llm(get_provider_by_id, get_using_provider, payload)` 兼容两种入参——显式 `provider_id`（S7.1e）或 `umo`（取 `Context.get_using_provider(umo)`=该 bot 在该群用的 provider）；main.py `_handle_llm` 注入 `get_using_provider`。
 - 不做：前端/绑定（S7.3b/c）。
-- 判据：插件 `tests/test_llm_bridge.py`（+）按 umo 取 provider 委托产文本 + 两入参都覆盖；缺 provider→404。
+- 判据：插件 `tests/test_llm_bridge.py`（by_id / by_umo / 两种 404 / 缺 prompt 或都缺 400）**18 passed**；orchestrator 全量 **181 passed, 2 skipped**（A3，未动 orchestrator）。
 
 **S7.3b 「跟随我的 bot」模型绑定**
 - 做：好友标记"模型跟随 AstrBot bot"（如 `llm_ref="@bot"` 哨兵 / 一个 mode 字段）；`ModelProvider` 对这类好友读其 `bot_ref` → 返回 `AstrBotChatModel`（按 bot/umo 委托，umo 来自起场 group_key）；`make_model_from_backend`/`model_provider_from` 加这条解析路径。

@@ -102,7 +102,9 @@ class GroupRelay(Star):
             payload = await request.json()
         except Exception:  # noqa: BLE001
             return web.json_response({"ok": False, "error": "请求体非合法 JSON"}, status=400)
-        body, status = await do_llm(self.context.get_provider_by_id, payload)
+        body, status = await do_llm(
+            self.context.get_provider_by_id, self.context.get_using_provider, payload
+        )
         return web.json_response(body, status=status)
 
     # ---- 入站（S4.2）----
