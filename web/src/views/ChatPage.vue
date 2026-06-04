@@ -98,7 +98,12 @@
     <!-- 插话窗口：每轮发言后在 human_gate 暂停 -->
     <v-card v-if="paused && pauseType === 'human_gate'" variant="tonal" class="mt-4">
       <v-card-text>
-        <div class="text-caption mb-2">轮到你——可插话改向，或让讨论继续。</div>
+        <div
+          class="text-caption mb-2"
+          :class="pauseReason ? 'text-warning font-weight-medium' : 'text-medium-emphasis'"
+        >
+          {{ gatePrompt }}
+        </div>
         <v-text-field
           v-model="interjectText"
           label="插话（留空=继续讨论）"
@@ -130,7 +135,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   getConversation,
@@ -165,6 +170,13 @@ const status = ref('')
 const loaded = ref(false) // 从历史载入的会话（隐藏起场表单）
 const paused = ref(false)
 const pauseType = ref(null) // 'human_gate' | 'clarify'
+const pauseReason = ref(null) // human_gate 触发原因：'moderator' | 'budget' | null（普通每轮）
+// S8b：让位窗口顶部提示"为何轮到你"——主持人建议结束/已聊多轮/普通每轮，由你拍板是否继续。
+const gatePrompt = computed(() => {
+  if (pauseReason.value === 'moderator') return '主持人觉得讨论差不多了——你来定：继续聊，还是结束总结？'
+  if (pauseReason.value === 'budget') return '已经连聊了好几轮——轮到你了：继续，还是结束？'
+  return '轮到你——可插话改向，或让讨论继续。'
+})
 const interjectText = ref('')
 const clarifyAnswer = ref('')
 
@@ -291,9 +303,10 @@ const handlers = {
       text: `${head}${e.question || ''}`,
     })
   },
-  human_gate: () => {
+  human_gate: (e) => {
     paused.value = true
     pauseType.value = 'human_gate'
+    pauseReason.value = e?.reason || null // moderator 建议结束 / budget 已聊多轮 / null 普通每轮
   },
   output: (e) => {
     output.value = e.output

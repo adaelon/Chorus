@@ -484,9 +484,11 @@
 - 做（引擎）：`human_gate` interrupt 带 `reason`；continue 清 `stop_reason`；`reason=="budget"` 也重置 `turns_since_human=0`（防死循环）。人在环每轮过 gate=人始终掌控，未加额外硬上限（recursion_limit 兜底）。
 - 判据：`tests/recipes/test_human_gate.py`（moderator-stop→human_gate/不擅自合成/人 end 才收尾；budget→human_gate+续后 turns 归零不死循环）；schedule/roundtable(continuous)/compile 零改全绿（A3）。
 
-**S8b 前端：human_gate 提示带原因**
-- 做：human_gate 窗口显示触发原因（主持人建议结束 / 已聊 N 轮该你了 / 每轮让位），按钮仍「继续 / 结束 / 插话」。
-- 判据：`npm run build` 过；主持人建议结束时前端显示该提示、点继续能接着聊（手动）。
+**S8b 前端：human_gate 提示带原因 ✅**
+- 做：ChatPage human_gate 事件读 `e.reason`→`pauseReason`；`gatePrompt` 按 moderator/budget/null 显不同提示（reason 非空标黄），按钮仍 插话/继续/结束。后端 Interrupt 已透传 reason（S8a），纯前端。
+- 判据：`npm run build` 过；主持人建议结束/预算触顶时窗口显对应提示、点继续能接着聊（手动）。
+
+> **S8 圆桌结束权归人（a-b）完成** ✅：AI 的结束判断=建议，人最终拍板（moderator/budget stop→human_gate + 前端显因）；relay 无真人自动收尾；continuous 配方仍 AI 自动结束。
 
 ---
 
