@@ -12,8 +12,7 @@
     <v-card variant="outlined" class="mb-6">
       <v-card-title>{{ editing ? '编辑' : '新建' }}后端</v-card-title>
       <v-card-text>
-        <v-text-field v-model="form.id" label="id（唯一，好友按它绑定）" :disabled="editing" variant="outlined" />
-        <v-text-field v-model="form.name" label="显示名（如 GPT-4o / DeepSeek-V3）" variant="outlined" />
+        <v-text-field v-model="form.name" label="显示名（如 GPT-4o / DeepSeek-V3；好友按它认）" variant="outlined" />
         <v-select
           v-model="form.kind"
           :items="[
@@ -66,7 +65,7 @@
             variant="outlined"
           />
         </template>
-        <v-btn color="primary" :loading="loading" :disabled="!form.id || !form.name" @click="save">
+        <v-btn color="primary" :loading="loading" :disabled="!form.name" @click="save">
           {{ editing ? '保存' : '新建' }}
         </v-btn>
         <v-btn class="ml-2" variant="tonal" :loading="testing" :disabled="!canTest" @click="test">
@@ -89,7 +88,7 @@
       <v-list-item
         v-for="b in backends"
         :key="b.id"
-        :title="`${b.name}（${b.id}）`"
+        :title="b.name"
         :subtitle="
           b.kind === 'astrbot'
             ? `类型:astrbot · 委托 provider:${b.provider_id || '—'}`
@@ -193,6 +192,7 @@ async function save() {
     if (editing.value) {
       await updateLlmBackend(form.value.id, payload)
     } else {
+      payload.id = `llm-${crypto.randomUUID().slice(0, 8)}` // id 自动生成（用户只填 name），仿配方
       await createLlmBackend(payload)
     }
     resetForm()
