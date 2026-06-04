@@ -390,6 +390,14 @@ ChannelDriver(adapter)  # 统一接口 send(group_key,account_ref,text)；AstrBo
 - **小点**：① bots 需在 Chorus 后端注册表登记一遍（与 AstrBot 重复填 bot_id）——可后补"从桥拉取 platform 实例列表"一键导入。② 纯 web 模式无真实 umo，选 AstrBot bot 做模型会落到 AstrBot 全局 provider（非 bot 专属），非 blocker。
 **展开**：切片 **S7.4**（AstrBot bot 作为后端，去 bot_ref），见 §7。
 
+### §6.19 圆桌"结束"权归人（主持人建议、人拍板）
+**病**：人在环圆桌里 `schedule` 的 `moderator_llm_pick` 一判"讨论已充分"就 `Stop(reason="moderator")`，配方边 `schedule --stop--> synthesize` **直奔合成、绕过人**——用户还想继续，主持人却擅自结束（schedule.py:54/77）。
+**决策**：人在环模式下 AI 的"结束判断"是**建议**而非**执行**，人有最终否决权。"自动结束"已由 `ROUNDTABLE_CONTINUOUS`（无人在环）覆盖，故区分点天然是**配方**，不必新增原语（否决 B 的独立 end 原语——A 用"配方即组合点"已达可换效果；要显式可拖拽结束闸时再做）。
+- **moderator-stop → human_gate**：人在环 `ROUNDTABLE` 加条件边 `when stop_reason==moderator → human_gate`（`when` 已支持按 state 字段判，§6.16 C）。主持人觉得该结束 → 人看到「主持人建议结束，继续/结束?」，**人拍板**；`human_gate --end--> synthesize` 才真收尾。纯配方数据改动。
+- **预算闸触顶 → 让位给人**（用户确认一并改）：`max_turns_per_human` 触顶不再直接 `Stop→synthesize`，改为 `YieldToHuman`（"该你说了"），路由到既有 `yield_to_human → human_gate`。
+**命门**：budget→yield 后，人 resume（继续/插话）时**必须重置 `turns_since_human`**，否则回 schedule 立刻再触顶、死循环（实现要点）。`human_gate` interrupt 提示应带 reason（主持人建议结束 / 已聊 N 轮该你了），人才知道为何被问。硬安全上限（真正防跑飞）仍可保留一个更大的终止闸。
+**展开**：切片 **S8**（圆桌结束权归人），见 §7。
+
 ---
 
 ## 7. MVP 落地顺序（每步独立可验）
