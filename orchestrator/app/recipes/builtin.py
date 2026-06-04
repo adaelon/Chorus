@@ -49,7 +49,10 @@ ROUNDTABLE: dict = {
         {"from": "frame", "to": "schedule"},
         {"from": "schedule", "when": {"field": "next_decision", "op": "==", "value": "next_speaker"}, "to": "turn"},
         {"from": "schedule", "when": {"field": "next_decision", "op": "==", "value": "yield_to_human"}, "to": "human_gate"},
-        {"from": "schedule", "to": "synthesize"},  # else = stop
+        # §6.19：主持人"建议结束"/预算闸触顶 → 交给人定（human_gate），不直接收尾
+        {"from": "schedule", "when": {"field": "stop_reason", "op": "==", "value": "moderator"}, "to": "human_gate"},
+        {"from": "schedule", "when": {"field": "stop_reason", "op": "==", "value": "budget"}, "to": "human_gate"},
+        {"from": "schedule", "to": "synthesize"},  # else = 其它 stop（如 empty_roster）才自动收尾
         {"from": "turn", "to": "human_gate"},
         {"from": "human_gate", "when": {"field": "next_decision", "op": "==", "value": "end"}, "to": "synthesize"},
         {"from": "human_gate", "to": "schedule"},  # else = continue

@@ -84,7 +84,15 @@ class RelayDriver:
                 snap = await self._graph.aget_state(cfg)
                 if not snap.next:  # 跑到 END（synthesize）→ 本场结束
                     break
-                stream_input = Command(resume=self._next_resume(thread))
+                # §6.19：圆桌 human_in_loop 把主持人/预算闸的 stop 改路由到 human_gate（交真人定）。
+                # relay 无真人——AI 判停(moderator/budget)且无待消费插话时，自动收尾（等价旧行为：stop→END）。
+                q = self._queues.get(thread)
+                has_interject = q is not None and not q.empty()
+                reason = (snap.values or {}).get("stop_reason")
+                if not has_interject and reason in ("moderator", "budget"):
+                    stream_input = Command(resume={"end": True})
+                else:
+                    stream_input = Command(resume=self._next_resume(thread))
         except Exception as e:  # noqa: BLE001
             logger.error(f"relay 讨论 {thread} 异常：{e}")
 

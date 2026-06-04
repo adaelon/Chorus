@@ -479,10 +479,10 @@
 
 > 人在环圆桌里主持人擅自结束（schedule moderator-stop 直奔 synthesize、绕过人）。改为：AI 的结束判断是建议→交人定；预算触顶让位给人而非结束。auto(continuous) 配方保持 AI 自动结束。
 
-**S8a 引擎+配方：moderator-stop→human_gate、budget→yield_to_human**
-- 做（配方）：`ROUNDTABLE`（人在环）加条件边 `when stop_reason==moderator → human_gate`（在 stop→synthesize 之前）。
-- 做（引擎）：`decide_next` 预算闸触顶改返回 `YieldToHuman()`（而非 `Stop(reason=budget)`）→ 走既有 yield_to_human→human_gate；human_gate resume（继续/插话）时重置 `turns_since_human=0`（防回 schedule 立刻再触顶死循环）；保留一个更大的硬安全上限（防跑飞）。`ROUNDTABLE_CONTINUOUS`(auto) 不变。
-- 判据：`tests/` 主持人 stop（注入假 pick 返回 Stop moderator）→ 停在 human_gate 而非 synthesize；human 续→回 schedule 继续；预算触顶→human_gate（非结束）+ 续后 turns_since_human 归零不立刻再触顶；continuous 仍自动结束；`.venv` 全量绿（A3）。
+**S8a 引擎+配方：moderator-stop/budget → human_gate ✅**
+- 做（配方，实现取舍）：让**配方**决定 stop 去向、`decide_next` 不动（更小改面、不破 schedule 测）——`ROUNDTABLE`（人在环）加边 `when stop_reason==moderator → human_gate` / `==budget → human_gate`（else 其它 stop 才 synthesize）。continuous 不变（budget 仍 →synthesize）。
+- 做（引擎）：`human_gate` interrupt 带 `reason`；continue 清 `stop_reason`；`reason=="budget"` 也重置 `turns_since_human=0`（防死循环）。人在环每轮过 gate=人始终掌控，未加额外硬上限（recursion_limit 兜底）。
+- 判据：`tests/recipes/test_human_gate.py`（moderator-stop→human_gate/不擅自合成/人 end 才收尾；budget→human_gate+续后 turns 归零不死循环）；schedule/roundtable(continuous)/compile 零改全绿（A3）。
 
 **S8b 前端：human_gate 提示带原因**
 - 做：human_gate 窗口显示触发原因（主持人建议结束 / 已聊 N 轮该你了 / 每轮让位），按钮仍「继续 / 结束 / 插话」。

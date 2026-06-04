@@ -32,9 +32,14 @@ async def human_gate(state: GroupState) -> dict:
     if had_pending:
         history.append(state.pending_human)  # 异步注入的插话纳入群历史
 
+    # §6.19：本次暂停的原因（主持人建议结束 moderator / 预算闸触顶 budget / 普通每轮 None）。
+    # 主持人 stop 与预算闸经配方边路由到这里（而非直接收尾），由人拍板。
+    reason = state.stop_reason
+
     signal = interrupt(
         {
             "type": "human_gate",
+            "reason": reason,  # 供前端显示"为何被问"（S8b）
             "turns_since_human": state.turns_since_human,
             "last": state.history[-1].text if state.history else None,
         }
@@ -48,7 +53,9 @@ async def human_gate(state: GroupState) -> dict:
     if text:
         history.append(Msg(sender_id="human", sender_kind="human", text=text))
 
-    update: dict = {"history": history, "pending_human": None, "next_decision": "continue"}
-    if had_pending or text:
-        update["turns_since_human"] = 0  # 有人类输入 → 预算重置（改向）
+    # 清掉 stop_reason，避免回 schedule 后旧 reason 再触发同一条边。
+    update: dict = {"history": history, "pending_human": None, "next_decision": "continue", "stop_reason": None}
+    # 有人类输入，或本次是预算闸触顶的让位 → 预算归零（否则回 schedule 立刻再触顶，死循环）。
+    if had_pending or text or reason == "budget":
+        update["turns_since_human"] = 0
     return update
