@@ -67,3 +67,21 @@ def test_interrupt_payload_passthrough():
     ev = to_event("updates", {"__interrupt__": intr})
     assert isinstance(ev, Interrupt)
     assert ev.to_dict()["type"] == "human_gate"
+
+
+def test_deliver_interrupt_passthrough():
+    """S10b：deliver 选择闸的 interrupt 原样透传 type=deliver（前端据此渲染两按钮）。"""
+    intr = (type("I", (), {"value": {"type": "deliver", "options": ["decide", "produce"]}})(),)
+    ev = to_event("updates", {"__interrupt__": intr})
+    assert isinstance(ev, Interrupt)
+    assert ev.to_dict()["type"] == "deliver"
+
+
+def test_synthesize_and_produce_outputs_are_output_events():
+    """S10b：synthesize（出结论）与 produce（出产物）都是终端产出 → Output 事件。"""
+    from app.transport.runtime import Output
+
+    syn = to_event("updates", {"synthesize": {"output": "结论"}})
+    prod = to_event("updates", {"produce": {"output": "产物"}})
+    assert isinstance(syn, Output) and syn.to_dict() == {"type": "output", "output": "结论"}
+    assert isinstance(prod, Output) and prod.to_dict() == {"type": "output", "output": "产物"}

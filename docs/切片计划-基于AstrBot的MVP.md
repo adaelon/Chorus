@@ -534,11 +534,14 @@
 - 判据：`tests/` deliver 端到端——人 `{end:true}` → human_gate end → deliver interrupt(type=deliver) → resume `{choice:"produce"}` 跑 produce 到 output / `{choice:"decide"}` 跑 synthesize；`roundtable_deliver` 过 `validate`（human 节点算闸、末端可达 END）；relay/既有零改全绿。
 - 落地：`deliver` 节点(human interrupt 纯选择闸,只写 next_decision)+ spec/REGISTRY + `ROUNDTABLE_DELIVER`(human_gate end→deliver→{produce|synthesize})+ seed + `RoundtableResumeReq.choice`/`_resume_payload` 透传。`tests/recipes/test_roundtable_deliver.py`(4) + resume choice 透传(+1);spec/primitives 期望集 +deliver。`.venv` 全量 **213 passed, 2 skipped**;human_gate/synthesize/produce 节点零改。详见代码链路。
 
-**S10c 前端：形态选择 + 产出渲染**
+**S10c 前端：形态选择 + 产出渲染 ✅**
 - 做：圆桌入口呈现三形态（求结论/出产物/结束再定 → 映射三 recipe id，可做成「圆桌」卡下一个形态选择，或 RecipePicker 三项）；ChatPage 处理 `deliver` interrupt（pauseType=`deliver`，渲染"你要结论还是产出？"两按钮 → `sessionResumeStream {choice}`）；produce/结论产出气泡区分标题（产物 vs 圆桌结论）。
 - 判据：`npm run build` 过；三路径手动——开场选出产物→交付产物（非纪要）；结束再定→discuss→结束→问形态→按选出对应产出；选结论=现状。
+- 落地：起场表单加产出形态 `v-btn-toggle`（映射 decide=默认圆桌/produce=roundtable_produce/deliver=roundtable_deliver，走 recipeRunStream）；`handlers.deliver`+deliver 选择卡（两按钮→`chooseDeliver`→`{choice}`）；综合卡标题随 `outputKind`；end 文案改「结束」。**引擎缺口修**：`runtime.to_event` 的 Output 映射加 `produce`（否则产物不发 SSE）。`tests/transport/test_roundtable_event.py`(+2)；`npm run build` 过；`.venv` 全量 **215 passed, 2 skipped**。详见代码链路。
 
 > **三关键验收**：S10a `produce` 真把 task 当 brief 出产物（解最初痛点）；S10b `deliver` 选择闸纯路由、复用 synthesize/produce 零重复；S10c 三形态人可选。
+
+> **S10 圆桌产出形态（a-c）完成** ✅：出结论/出产物/结束再定三配方，开场选前两、结束才知道选第三；`synthesize`（出结论）零改。解了"圆桌只复述讨论、不给产物"的最初痛点。
 
 ---
 

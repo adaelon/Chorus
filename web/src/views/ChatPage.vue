@@ -22,6 +22,24 @@
         :hint="contactItems.length ? '' : '注册表为空——先去“好友”页新建'"
         persistent-hint
       />
+      <!-- S10c 产出形态（§6.21）：开场选要结论/产物，或结束再定 -->
+      <div v-if="!queryRecipe" class="mb-3">
+        <div class="text-caption text-medium-emphasis mb-1">最后产出：</div>
+        <v-btn-toggle v-model="outputMode" mandatory divided density="comfortable" color="primary">
+          <v-btn value="decide" size="small">出结论/决策</v-btn>
+          <v-btn value="produce" size="small">出产物</v-btn>
+          <v-btn value="deliver" size="small">结束再定</v-btn>
+        </v-btn-toggle>
+        <div class="text-caption text-medium-emphasis mt-1">
+          {{
+            outputMode === 'produce'
+              ? '直接交付你要的东西（prompt/方案/代码…），而非讨论纪要'
+              : outputMode === 'deliver'
+                ? '先讨论，结束时再选要结论还是产物'
+                : '收敛讨论成结论与关键分歧'
+          }}
+        </div>
+      </div>
       <v-btn
         color="primary"
         :loading="loading"
@@ -143,15 +161,35 @@
             继续
           </v-btn>
           <v-btn size="small" color="success" variant="text" class="ml-2" :loading="loading" @click="endRoundtable">
-            结束并总结
+            结束
           </v-btn>
         </div>
       </v-card-text>
     </v-card>
 
-    <!-- 圆桌主笔综合 -->
+    <!-- S10c 出产物形态选择闸（deliver）：结束后问要结论还是产物 -->
+    <v-card v-if="paused && pauseType === 'deliver'" variant="tonal" class="mt-4">
+      <v-card-text>
+        <div class="text-subtitle-2 mb-2">讨论结束——你要哪种产出？</div>
+        <v-btn size="small" color="primary" :loading="loading" @click="chooseDeliver('decide')">
+          出结论/决策
+        </v-btn>
+        <v-btn
+          size="small"
+          color="success"
+          variant="tonal"
+          class="ml-2"
+          :loading="loading"
+          @click="chooseDeliver('produce')"
+        >
+          出产物
+        </v-btn>
+      </v-card-text>
+    </v-card>
+
+    <!-- 圆桌主笔产出（出结论=综合 / 出产物=产物）-->
     <v-card v-if="output" variant="outlined" class="mt-4">
-      <v-card-title>圆桌综合</v-card-title>
+      <v-card-title>{{ outputTitle }}</v-card-title>
       <v-card-text class="md-body" v-html="renderMd(output)" />
     </v-card>
   </v-container>
@@ -177,6 +215,12 @@ const topic = ref(route.query.task || '要不要给便利店做付费会员')
 const recipeId = ref(route.query.recipe || '') // ?recipe=id → 用 /recipe/run 跑库内配方
 const convKey = ref(route.query.conversation || '') // ?conversation=key → 载入历史会话（看/续）
 const recipeName = ref('')
+const queryRecipe = route.query.recipe || '' // 来自 ?recipe= 的自定义配方（有则不显形态选择器）
+// S10c 产出形态（§6.21）：出结论(默认圆桌)/出产物/结束再定（映射三内置配方）
+const outputMode = ref('decide') // decide | produce | deliver（开场选）
+const outputKind = ref('decide') // 最终产出种类（决定综合卡标题）：decide | produce
+const FORM_RECIPE = { decide: '', produce: 'roundtable_produce', deliver: 'roundtable_deliver' }
+const FORM_LABEL = { decide: '出结论/决策', produce: '出产物', deliver: '结束再定' }
 const contactItems = ref([]) // {title, value:id}
 const contactNames = ref({}) // id -> name
 const selectedContacts = ref([])
@@ -202,6 +246,8 @@ const gatePrompt = computed(() => {
 })
 const interjectText = ref('')
 const clarifyAnswer = ref('')
+// 综合卡标题随产出种类（出产物 vs 出结论）
+const outputTitle = computed(() => (outputKind.value === 'produce' ? '圆桌产物' : '圆桌综合'))
 
 // S9c：@定向插话——本场到场成员（chips 源）+ 选中的定向目标 contact_id。
 const directedTargets = ref([])
@@ -247,6 +293,7 @@ async function loadConversation(key) {
   const c = await getConversation(key)
   topic.value = c.title || ''
   recipeId.value = c.recipe_id || ''
+  outputKind.value = c.recipe_id === 'roundtable_produce' ? 'produce' : 'decide' // 综合卡标题
   output.value = c.output || ''
   dims.value = Object.fromEntries((c.roster || []).map((r) => [r.contact_id, r.dimension]))
   messages.value = (c.history || []).map((m) => ({
@@ -346,6 +393,11 @@ const handlers = {
     pauseType.value = 'human_gate'
     pauseReason.value = e?.reason || null // moderator 建议结束 / budget 已聊多轮 / null 普通每轮
   },
+  deliver: () => {
+    // S10c：结束再定配方的选择闸——问人要结论还是产物
+    paused.value = true
+    pauseType.value = 'deliver'
+  },
   output: (e) => {
     output.value = e.output
     paused.value = false
@@ -393,6 +445,12 @@ async function start() {
   current = null
   pendingDirected = new Set()
   status.value = '主持人分配维度中…'
+  // S10c：无 ?recipe= 时按产出形态映射内置配方（出结论=默认圆桌；出产物/结束再定=对应配方）
+  if (!queryRecipe) {
+    recipeId.value = FORM_RECIPE[outputMode.value]
+    recipeName.value = recipeId.value ? `圆桌·${FORM_LABEL[outputMode.value]}` : ''
+    outputKind.value = outputMode.value === 'produce' ? 'produce' : 'decide'
+  }
   // ?recipe= 时跑库内配方（/recipe/run）；否则默认圆桌。续场共用 resume 端点（共享 saver）。
   const leg = recipeId.value
     ? () => recipeRunStream(recipeId.value, groupKey.value, topic.value, selectedContacts.value, handlers)
@@ -403,9 +461,15 @@ async function start() {
 const continueDiscussion = () =>
   runLeg(() => sessionResumeStream(groupKey.value, { interject: null }, handlers))
 
-// 手动收尾（S3.6h）：不靠预算闸/主持人判停，直接主笔综合。
+// 手动收尾（S3.6h）：roundtable→直接主笔综合；roundtable_deliver→去 deliver 选择闸问形态。
 const endRoundtable = () =>
   runLeg(() => sessionResumeStream(groupKey.value, { end: true }, handlers))
+
+// S10c deliver 选择闸：人选要结论还是产物 → resume {choice}，路由到 synthesize/produce。
+function chooseDeliver(kind) {
+  outputKind.value = kind === 'produce' ? 'produce' : 'decide'
+  return runLeg(() => sessionResumeStream(groupKey.value, { choice: kind }, handlers))
+}
 
 async function interjectAndResume() {
   if (!interjectText.value) return

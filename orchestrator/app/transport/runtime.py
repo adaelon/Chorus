@@ -106,8 +106,8 @@ def to_event(mode: str, payload) -> OutboundEvent | None:
             if node == "turn" and delta.get("history"):
                 last = delta["history"][-1]
                 return TurnDone(last.sender_id, last.dimension, last.text)
-            if node == "synthesize" and "output" in delta:
-                return Output(delta["output"])
+            if node in ("synthesize", "produce") and "output" in delta:
+                return Output(delta["output"])  # S10b：produce 也是终端产出（出产物）
     return None
 
 
