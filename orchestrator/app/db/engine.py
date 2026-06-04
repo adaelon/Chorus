@@ -18,16 +18,18 @@ def make_engine(db_path: str = "chorus.sqlite") -> AsyncEngine:
 async def init_models(engine: AsyncEngine) -> None:
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
-        await conn.run_sync(_add_missing_columns)
+        await conn.run_sync(_sync_columns)
 
 
-def _add_missing_columns(sync_conn) -> None:
-    """轻量迁移：给**已存在**的表补上模型新增的列（ADD COLUMN）。
+def _sync_columns(sync_conn) -> None:
+    """轻量迁移：让**已存在**的表的列向模型对齐——补缺列（ADD）+ 删多余列（DROP）。
 
-    无迁移框架（单机自包含、不引 alembic）：`create_all` 只建缺失的整表、不改已存在的表，
-    故老库加新字段（如 S7.1e 的 llm_backends.kind/provider_id）会"no such column"。这里
-    比对模型列与库内列，对差额逐列 `ALTER TABLE ADD COLUMN`（带标量默认值）。幂等、通用——
-    以后任何表加带默认值的列都自动补，不用手动删库或写迁移。
+    无迁移框架（单机自包含、不引 alembic）：`create_all` 只建缺失整表、不改已存在表。故
+    - 加字段（S7.1e llm_backends.kind/provider_id）→ "no such column"；
+    - 改名/删字段（api_key_env→api_key）→ 残留旧列若 NOT NULL 无默认会 IntegrityError。
+    这里比对模型列与库内列：差额列 `ADD COLUMN`（带标量默认）、多余列 `DROP COLUMN`（删列逐个
+    try/except 保护，受限/不支持则跳过、不致命）。幂等、通用——"模型=唯一真相"，以后增删字段
+    自动收敛，不用手动删库或写迁移。
     """
     inspector = sa_inspect(sync_conn)
     existing_tables = set(inspector.get_table_names())
@@ -35,9 +37,15 @@ def _add_missing_columns(sync_conn) -> None:
         if table.name not in existing_tables:
             continue  # 全新表 create_all 已建齐
         have = {c["name"] for c in inspector.get_columns(table.name)}
+        want = {c.name for c in table.columns}
         for col in table.columns:
             if col.name not in have:
                 sync_conn.execute(text(_add_column_sql(table.name, col, sync_conn.dialect)))
+        for orphan in have - want:  # 模型已删的旧列（如改名残留）：删掉，免 NOT NULL 残列挡 INSERT
+            try:
+                sync_conn.execute(text(f'ALTER TABLE "{table.name}" DROP COLUMN "{orphan}"'))
+            except Exception:  # noqa: BLE001 - 受限列（PK/索引/旧 sqlite 不支持）跳过，不致命
+                pass
 
 
 def _add_column_sql(table_name: str, col, dialect) -> str:
