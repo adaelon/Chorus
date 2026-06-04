@@ -490,6 +490,27 @@
 
 ---
 
+## S9 圆桌 @定向插话（@某人=只让他改，不@=对全员，§6.20）
+
+> 人在环圆桌 `@ada1 改X` 只让 ada1 改、别人不插嘴；不@ 维持现状（主持人挑谁接）。多@批量按序跑完再回到人；修订追加、合成偏最新。@只在两轮间生效（不打断流式）。
+
+**S9a 引擎+配方：directed_queue + 定向调度 + 批量不连锁**
+- 做（state）：`GroupState` 加 `directed_queue:list[str]`（+ 一个 directed 标记供 turn 框架）。
+- 做（节点）：`human_gate` 解析 interject 的 @目标 → 填 `directed_queue`（指令文本仍进 history）；`schedule` 优先级最前 `directed_queue` 非空 → pop → `NextSpeaker(directed)`（跳过主持人/预算）；`turn` 定向时 prompt 框架为"真人点名要你按〈指令〉修改"。
+- 做（配方）：`ROUNDTABLE` 加边 `turn when directed_queue 非空 → schedule / else → human_gate`（批量跑完再停、不连锁）。
+- 不做：合成去重（S9b）；前端 @ chips（S9c）；打断流式 barge-in。
+- 判据：`tests/` @单人→只他发言→回 human_gate（主持人不接力）；@多人→按序全发完才停；不@→维持主持人挑人；定向跳过预算闸；`.venv` 全量绿（A3）。
+
+**S9b 合成/点账本：修订追加偏最新 + 旧主张去重**
+- 做：被@者修订作新发言追加；`synthesize`/claims 投影偏该 speaker 最新一版、旧版去重（§6.11）。
+- 判据：`tests/` 同一 speaker 修订后合成用新版、不双算旧主张；`.venv` 全量绿。
+
+**S9c 前端：@ chips + 定向轮渲染**
+- 做：ChatPage 插话框加 roster 成员 @ chips（选谁→@其 contact_id）；定向发言气泡标"应 @ 修订"。
+- 判据：`npm run build` 过；@某人只他改、不@对全员（手动）。
+
+---
+
 ## 依赖与执行顺序
 
 ```

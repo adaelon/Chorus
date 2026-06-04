@@ -398,6 +398,15 @@ ChannelDriver(adapter)  # 统一接口 send(group_key,account_ref,text)；AstrBo
 **命门**：budget→yield 后，人 resume（继续/插话）时**必须重置 `turns_since_human`**，否则回 schedule 立刻再触顶、死循环（实现要点）。`human_gate` interrupt 提示应带 reason（主持人建议结束 / 已聊 N 轮该你了），人才知道为何被问。硬安全上限（真正防跑飞）仍可保留一个更大的终止闸。
 **展开**：切片 **S8**（圆桌结束权归人），见 §7。
 
+### §6.20 圆桌 @定向插话（@某人=只让他改，不@=对全员）
+**需求**：人在环圆桌里 `@ada1 改X` 只让 ada1 修改、别人不插嘴；不 @ 则是对全员的普通插话（现状）。
+**现状契合**：今天 `human_gate` 的插话天然就是"对全员"（进共享 `history`，回 `schedule` 由主持人 LLM 挑谁接，human.py:47-53）。`next_speaker` 已存在、history 已 append-only——@定向只差"指定发言人 + 不连锁 + 修订框架"。
+- **机制**：①`human_gate` 解析 interject 里的 @（前端用 roster 成员 chips 选，名字→contact_id，避免重名/解析坑）→ 写新 state `directed_queue:list[str]`（按 @ 顺序）+ 指令文本仍作 human 消息进 history。②`schedule` 优先级最前：`directed_queue` 非空 → pop 首个 → `NextSpeaker(directed)`，**跳过主持人挑人与预算闸**（人明确指派）。③**批量不连锁**：`turn` 路由改 `when directed_queue 非空 → schedule（取下一个定向）/ else → human_gate`——@的几个按序说完才停回到人；队列空后 schedule 不再被进入，**主持人不会自动接力**（连锁天然避免）。
+- **修订语义**（用户确认）：被@者的修改**追加**一条新发言（history append-only）；点账本/合成**偏该人最新一版**、旧主张去重（§6.11）。
+- **不@（对全员）**：维持现状（进历史、主持人挑谁接），不强制全员各回一次。
+- **边界**：@ 只在 `human_gate`（两轮之间）生效——只能在某人说完的间隙 @，**不支持打断正在流式输出的那一句**（真·barge-in=取消在跑的 astream，另列、暂不做）。`turn` 定向时 prompt 框架为"真人点名要你按〈指令〉修改"（需一个 directed 标记或读最近 human 指令）。
+**展开**：切片 **S9**（圆桌 @定向插话），见 §7。
+
 ---
 
 ## 7. MVP 落地顺序（每步独立可验）
