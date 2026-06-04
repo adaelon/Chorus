@@ -29,7 +29,7 @@ from pydantic import BaseModel, Field
 from sqlmodel import select
 
 from .db.engine import init_models, make_engine, make_session_factory
-from .db.models import Contact, Conversation, Recipe
+from .db.models import Contact, Conversation, LLMBackend, Recipe
 from .db.repo import (
     bot_ref_provider_from,
     persona_provider_from,
@@ -138,6 +138,21 @@ class ContactIn(BaseModel):
     persona_style: str = ""
     base_stance: str = ""
     bot_ref: str = ""  # AstrBot platform 实例 id（出站以该 bot 身份发言，S4.3）
+
+
+class LLMBackendIn(BaseModel):
+    """LLM 后端写入（S7.1a，§6.18）：每好友独立模型的引用目标。
+
+    **不收明文 key**：只 `api_key_env`（环境变量名），真实 key 走环境变量（不入库/不进 git）。
+    """
+
+    id: str
+    name: str = ""
+    base_url: str = ""
+    api_key_env: str = ""
+    model: str = ""
+    temperature: float = 0.75
+    max_tokens: int | None = None
 
 
 class RecipeIn(BaseModel):
@@ -752,6 +767,45 @@ def create_app(
             await s.delete(obj)
             await s.commit()
             return {"deleted": cid}
+
+    # ---- LLM 后端注册表 CRUD（S7.1a，§6.18）----
+
+    @app.get("/llm-backends")
+    async def list_llm_backends(request: Request):
+        async with request.app.state.session_factory() as s:
+            return (await s.exec(select(LLMBackend))).all()
+
+    @app.post("/llm-backends")
+    async def create_llm_backend(b: LLMBackendIn, request: Request):
+        async with request.app.state.session_factory() as s:
+            if await s.get(LLMBackend, b.id) is not None:
+                raise HTTPException(status_code=409, detail=f"llm backend {b.id} exists")
+            obj = LLMBackend(**b.model_dump())
+            s.add(obj)
+            await s.commit()
+            return obj
+
+    @app.put("/llm-backends/{bid}")
+    async def update_llm_backend(bid: str, b: LLMBackendIn, request: Request):
+        async with request.app.state.session_factory() as s:
+            obj = await s.get(LLMBackend, bid)
+            if obj is None:
+                raise HTTPException(status_code=404, detail=f"llm backend {bid} not found")
+            for k, v in b.model_dump(exclude={"id"}).items():
+                setattr(obj, k, v)
+            s.add(obj)
+            await s.commit()
+            return obj
+
+    @app.delete("/llm-backends/{bid}")
+    async def delete_llm_backend(bid: str, request: Request):
+        async with request.app.state.session_factory() as s:
+            obj = await s.get(LLMBackend, bid)
+            if obj is None:
+                raise HTTPException(status_code=404, detail=f"llm backend {bid} not found")
+            await s.delete(obj)
+            await s.commit()
+            return {"deleted": bid}
 
     # ---- 配方库 CRUD（S5.4.2a，§6.16）----
 

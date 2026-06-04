@@ -378,10 +378,10 @@
 
 ### S7.1 每好友独立 LLM 后端（模型解耦）
 
-**S7.1a LLMBackend 注册表 + CRUD（key 走 env 引用）**
-- 做：`db/models.py` 加 `LLMBackend(id,name,base_url,api_key_env,model,temperature,max_tokens,created_at)`；`/llm-backends` CRUD；`api_key_env` 存变量名（如 `DEEPSEEK_KEY`），真实 key 读 `os.environ`（缺失时该后端不可用、给清晰报错，不进 git）。
+**S7.1a LLMBackend 注册表 + CRUD（key 走 env 引用）✅**
+- 做：`db/models.py` 加 `LLMBackend(id,name,base_url,api_key_env,model,temperature,max_tokens,created_at)`（不存明文 key）；`llm.py` 加 `make_chat_model_from_backend`（api_key 从 `api_key_env` 指向的环境变量读，缺失抛 `MissingApiKeyEnv` 含后端名+变量名）；`service.py` `LLMBackendIn`（不收明文 key）+ `/llm-backends` CRUD。
 - 不做：接到 generate（S7.1b）；前端（S7.1c）。
-- 判据：`tests/` LLMBackend CRUD（建/列/改/删）+ `api_key_env` 缺环境变量时构造 model 报清晰错；`.venv` 全量绿（A3）。
+- 判据：`tests/service/test_llm_backends.py`（3 条）CRUD（建/重409/列/改/改不存在404/删/再删404）+ 缺环境变量抛 MissingApiKeyEnv + 命中 env 造出 ChatOpenAI（key 取自环境、不落库）；`.venv` 全量 **167 passed, 2 skipped**（A3）。
 
 **S7.1b `ModelProvider` + generate/turn 按好友取模型（带缓存）**
 - 做：`ModelProvider = (contact_id)->ChatModel`（与 `PersonaProvider` 对称）；`default_model_provider_from(sf)` 按 `Contact.llm_ref→LLMBackend` 造 `make_chat_model(**backend)`、**按 backend.id 缓存**（不每轮新建）；`default_generator`/`turn` 改为 `model = await model_provider(contact_id)`（无 provider/无绑定→回退注入的全局 model，现状不退化）；`Contact.llm_ref` 字段 + create_app 接 `model_provider`（默认 `_from(sf)`）。

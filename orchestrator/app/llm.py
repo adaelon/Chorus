@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
 from typing import Any
 
@@ -19,7 +20,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from .config import load_llm_settings
+from .config import _parse_chunk_timeout, load_llm_settings
 
 # 可重试的瞬时错误（连接抖动 / 超时 / 5xx）；4xx 业务错误不重试
 RETRYABLE = (
@@ -42,6 +43,39 @@ def make_chat_model(**overrides: Any) -> ChatOpenAI:
     }
     if s.max_tokens:
         params["max_tokens"] = s.max_tokens
+    params.update(overrides)
+    return ChatOpenAI(**params)
+
+
+class MissingApiKeyEnv(RuntimeError):
+    """LLM 后端的 api_key_env 指向的环境变量缺失/为空（key 不落库，须由环境提供）。"""
+
+
+def make_chat_model_from_backend(backend: Any, **overrides: Any) -> ChatOpenAI:
+    """按 `LLMBackend` 记录造 ChatOpenAI（S7.1a，§6.18：每好友独立模型）。
+
+    api_key 从 `backend.api_key_env` 指向的**环境变量**读（非明文落库）；该变量缺失/为空时
+    抛 `MissingApiKeyEnv`（清晰报错，含后端名与变量名）。`backend` 鸭子类型：需有
+    name/base_url/api_key_env/model/temperature/max_tokens。
+    """
+    env_name = getattr(backend, "api_key_env", "") or ""
+    api_key = os.environ.get(env_name, "") if env_name else ""
+    if not api_key:
+        name = getattr(backend, "name", "") or getattr(backend, "id", "?")
+        raise MissingApiKeyEnv(
+            f"LLM 后端 {name!r} 的 api_key_env={env_name!r} 未在环境变量中找到（或为空）；"
+            f"请设置该环境变量后重试（key 不落库、不进 git）。"
+        )
+    params: dict[str, Any] = {
+        "base_url": backend.base_url,
+        "api_key": api_key,
+        "model": backend.model,
+        "temperature": getattr(backend, "temperature", 0.75),
+        # 沿用全局看门狗设置（kimi 推理间隙），不强依赖完整 LLM_* 环境变量。
+        "stream_chunk_timeout": _parse_chunk_timeout(),
+    }
+    if getattr(backend, "max_tokens", None):
+        params["max_tokens"] = backend.max_tokens
     params.update(overrides)
     return ChatOpenAI(**params)
 

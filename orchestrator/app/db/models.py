@@ -72,6 +72,26 @@ class Conversation(SQLModel, table=True):
     updated_at: float = Field(default_factory=time.time)
 
 
+class LLMBackend(SQLModel, table=True):
+    """LLM 后端注册表（S7.1a，§6.18）：每好友独立模型的引用目标。
+
+    `Contact.llm_ref` 指向本表 id；多好友可共享一个后端（同一 key 改一处）。
+    **api_key 不落库**：只存 `api_key_env`（环境变量名，如 "DEEPSEEK_KEY"），真实 key 走环境变量，
+    仓库可完整自包含、不泄密（延续 cmd_config 不进 git 的教训）。
+    """
+
+    __tablename__ = "llm_backends"
+
+    id: str = Field(primary_key=True)
+    name: str = ""
+    base_url: str = ""
+    api_key_env: str = ""  # 环境变量名（非明文 key）；构造 model 时从 os.environ 读
+    model: str = ""
+    temperature: float = 0.75
+    max_tokens: int | None = None
+    created_at: float = Field(default_factory=time.time)
+
+
 class Recipe(SQLModel, table=True):
     """配方库（S5.4.2a，§6.16）：用户/内置的声明式 DAG（nodes/edges）。
 
