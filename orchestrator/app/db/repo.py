@@ -9,7 +9,7 @@ import time
 
 from sqlmodel import select
 
-from ..llm import make_chat_model_from_backend
+from ..llm_astrbot import make_model_from_backend
 from ..recipes.builtin import AUTO, FANOUT, ROUNDTABLE, ROUNDTABLE_CONTINUOUS
 from .models import Contact, Conversation, LLMBackend, Recipe
 
@@ -38,14 +38,14 @@ def roster_provider_from(session_factory):
     return provider
 
 
-def model_provider_from(session_factory, *, cache: dict | None = None):
-    """造一个 model_provider：contact_id -> ChatOpenAI | None（S7.1b，§6.18 模型解耦）。
+def model_provider_from(session_factory, *, cache: dict | None = None, bridge_url: str = "http://127.0.0.1:9876"):
+    """造一个 model_provider：contact_id -> 模型 | None（S7.1b/e，§6.18 模型解耦）。
 
-    按 `Contact.llm_ref → LLMBackend` 造该好友独立的模型，**按 backend.id 缓存**（不每轮新建，
+    按 `Contact.llm_ref → LLMBackend` 造该好友独立的模型（`make_model_from_backend` 按 kind 分流：
+    openai→ChatOpenAI / astrbot→AstrBotChatModel 桥委托），**按 backend.id 缓存**（不每轮新建，
     否则连接数爆炸）。无 llm_ref / 后端已删 → 返回 None（generate 回退全局默认 model，现状不退化）。
-    后端 api_key_env 缺环境变量时 `make_chat_model_from_backend` 抛 MissingApiKeyEnv（清晰报错，
-    不静默回退——用户明确绑了后端却不可用，应显式暴露）。
-    缓存按 backend.id：CRUD 改后端配置后，进程内缓存仍为旧值，重启生效（MVP 取舍）。
+    后端 api_key_env 缺环境变量时抛 MissingApiKeyEnv（清晰报错，不静默回退——用户明确绑了后端却
+    不可用，应显式暴露）。缓存按 backend.id：CRUD 改后端配置后进程内仍旧值，重启生效（MVP 取舍）。
     """
     _cache: dict = {} if cache is None else cache
 
@@ -58,7 +58,7 @@ def model_provider_from(session_factory, *, cache: dict | None = None):
         if b is None:
             return None
         if b.id not in _cache:
-            _cache[b.id] = make_chat_model_from_backend(b)
+            _cache[b.id] = make_model_from_backend(b, bridge_url=bridge_url)
         return _cache[b.id]
 
     return provider

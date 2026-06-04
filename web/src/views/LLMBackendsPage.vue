@@ -14,42 +14,62 @@
       <v-card-text>
         <v-text-field v-model="form.id" label="id（唯一，好友按它绑定）" :disabled="editing" variant="outlined" />
         <v-text-field v-model="form.name" label="显示名（如 GPT-4o / DeepSeek-V3）" variant="outlined" />
-        <v-text-field v-model="form.base_url" label="base_url（OpenAI 兼容 /v1）" variant="outlined" />
-        <v-text-field
-          v-model="form.api_key_env"
-          label="api_key_env（环境变量名，非明文 key）"
-          placeholder="DEEPSEEK_KEY"
+        <v-select
+          v-model="form.kind"
+          :items="[
+            { value: 'openai', title: 'openai 兼容（独立，自填 base_url/key/model）' },
+            { value: 'astrbot', title: 'astrbot（委托给 AstrBot 已配好的 provider）' },
+          ]"
+          item-title="title"
+          item-value="value"
+          label="后端类型"
           variant="outlined"
         />
-        <v-combobox
-          v-model="form.model"
-          :items="modelOptions"
-          label="model（模型名；可手填或点「拉取模型」选）"
-          variant="outlined"
-          :loading="probing"
-        >
-          <template #append-inner>
-            <v-btn size="small" variant="text" :disabled="!form.base_url || !form.api_key_env" @click="probe">拉取模型</v-btn>
-          </template>
-        </v-combobox>
-        <v-row>
-          <v-col cols="6">
-            <v-text-field v-model.number="form.temperature" label="temperature" type="number" step="0.05" variant="outlined" />
-          </v-col>
-          <v-col cols="6">
-            <v-text-field v-model.number="form.max_tokens" label="max_tokens（留空=不限）" type="number" variant="outlined" />
-          </v-col>
-        </v-row>
+
+        <!-- kind=openai：独立后端 -->
+        <template v-if="form.kind !== 'astrbot'">
+          <v-text-field v-model="form.base_url" label="base_url（OpenAI 兼容 /v1）" variant="outlined" />
+          <v-text-field
+            v-model="form.api_key_env"
+            label="api_key_env（环境变量名，非明文 key）"
+            placeholder="DEEPSEEK_KEY"
+            variant="outlined"
+          />
+          <v-combobox
+            v-model="form.model"
+            :items="modelOptions"
+            label="model（模型名；可手填或点「拉取模型」选）"
+            variant="outlined"
+            :loading="probing"
+          >
+            <template #append-inner>
+              <v-btn size="small" variant="text" :disabled="!form.base_url || !form.api_key_env" @click="probe">拉取模型</v-btn>
+            </template>
+          </v-combobox>
+          <v-row>
+            <v-col cols="6">
+              <v-text-field v-model.number="form.temperature" label="temperature" type="number" step="0.05" variant="outlined" />
+            </v-col>
+            <v-col cols="6">
+              <v-text-field v-model.number="form.max_tokens" label="max_tokens（留空=不限）" type="number" variant="outlined" />
+            </v-col>
+          </v-row>
+        </template>
+
+        <!-- kind=astrbot：委托后端 -->
+        <template v-else>
+          <v-text-field
+            v-model="form.provider_id"
+            label="provider_id（AstrBot 里已配好的 provider id）"
+            hint="key/模型/校验都在 AstrBot 那边；这里只引用。需 group_relay 桥在跑。"
+            persistent-hint
+            variant="outlined"
+          />
+        </template>
         <v-btn color="primary" :loading="loading" :disabled="!form.id || !form.name" @click="save">
           {{ editing ? '保存' : '新建' }}
         </v-btn>
-        <v-btn
-          class="ml-2"
-          variant="tonal"
-          :loading="testing"
-          :disabled="!form.base_url || !form.api_key_env || !form.model"
-          @click="test"
-        >
+        <v-btn class="ml-2" variant="tonal" :loading="testing" :disabled="!canTest" @click="test">
           测试连通
         </v-btn>
         <v-btn v-if="editing" class="ml-2" variant="text" @click="resetForm">取消</v-btn>
@@ -70,7 +90,11 @@
         v-for="b in backends"
         :key="b.id"
         :title="`${b.name}（${b.id}）`"
-        :subtitle="`model:${b.model || '—'} · base_url:${b.base_url || '—'} · key 来自环境变量:${b.api_key_env || '—'} · temp:${b.temperature}`"
+        :subtitle="
+          b.kind === 'astrbot'
+            ? `类型:astrbot · 委托 provider:${b.provider_id || '—'}`
+            : `类型:openai · model:${b.model || '—'} · base_url:${b.base_url || '—'} · key 环境变量:${b.api_key_env || '—'} · temp:${b.temperature}`
+        "
       >
         <template #append>
           <v-btn size="small" variant="text" @click="edit(b)">编辑</v-btn>
@@ -83,7 +107,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import {
   createLlmBackend,
   deleteLlmBackend,
@@ -102,8 +126,15 @@ const probing = ref(false)
 const testResult = ref(null) // { ok, reply?, error? }
 const modelOptions = ref([])
 
-const blank = () => ({ id: '', name: '', base_url: '', api_key_env: '', model: '', temperature: 0.75, max_tokens: null })
+const blank = () => ({ id: '', name: '', kind: 'openai', base_url: '', api_key_env: '', model: '', temperature: 0.75, max_tokens: null, provider_id: '' })
 const form = ref(blank())
+
+// 测试连通可用条件：openai 需 base_url/key/model 齐；astrbot 需 provider_id。
+const canTest = computed(() =>
+  form.value.kind === 'astrbot'
+    ? !!form.value.provider_id
+    : !!(form.value.base_url && form.value.api_key_env && form.value.model),
+)
 
 function resetForm() {
   form.value = blank()
@@ -175,8 +206,8 @@ async function save() {
 
 function edit(b) {
   form.value = {
-    id: b.id, name: b.name, base_url: b.base_url, api_key_env: b.api_key_env,
-    model: b.model, temperature: b.temperature, max_tokens: b.max_tokens,
+    id: b.id, name: b.name, kind: b.kind || 'openai', base_url: b.base_url, api_key_env: b.api_key_env,
+    model: b.model, temperature: b.temperature, max_tokens: b.max_tokens, provider_id: b.provider_id || '',
   }
   editing.value = true
   testResult.value = null

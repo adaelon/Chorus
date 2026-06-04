@@ -81,3 +81,16 @@ async def test_model_provider_from_unbound_backend_falls_back(tmp_path):
         s.add(Contact(id="ada", name="阿达", llm_ref="ghost"))  # 指向已删/不存在的后端
         await s.commit()
     assert await model_provider_from(sf)("ada") is None
+
+
+async def test_model_provider_from_astrbot_kind(tmp_path):
+    """S7.1e：好友绑 kind=astrbot 后端 → provider 返回 AstrBotChatModel（委托桥）。"""
+    from app.llm_astrbot import AstrBotChatModel
+
+    sf = await _sf(tmp_path)
+    async with sf() as s:
+        s.add(LLMBackend(id="ab", name="经 AstrBot", kind="astrbot", provider_id="prov-x"))
+        s.add(Contact(id="ada", name="阿达", llm_ref="ab"))
+        await s.commit()
+    m = await model_provider_from(sf, bridge_url="http://bridge:9876")("ada")
+    assert isinstance(m, AstrBotChatModel) and m.provider_id == "prov-x"

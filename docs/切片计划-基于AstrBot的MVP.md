@@ -404,14 +404,14 @@
 - 不做：base_url 预设、AstrBot 全类型模板（§6.18+ 已否决）。
 - 判据：`tests/service/test_llm_backends.py`（+4）ping_model 假 model + test 端点 key 缺失/ping 成/败 + probe 列表/缺 key 兜底；`.venv` 全量 **174 passed, 2 skipped**（A3）；`npm run build` 过。
 
-**S7.1e LLMBackend kind 化 + astrbot 委托后端**
-- 做（schema）：`LLMBackend` 加 `kind`（默认 `openai`，兼容现有行）+ `provider_id`（kind=astrbot 用）；`ModelProvider`/`make_chat_model_from_backend` 分流：openai→ChatOpenAI（现状）、astrbot→薄适配器（实现 `astream` 接口，调桥 `POST /llm`）。
-- 做（桥）：`group_relay` 插件加 `POST /llm {provider_id, messages, ...}` → `Context.get_provider_by_id(id).text_chat(...)` 回文本（MVP 非流式，turn 等全文再吐）。
-- 做（前端）：后端表单 kind 选择（openai 显 base_url/key/model；astrbot 显 provider_id）。
+**S7.1e LLMBackend kind 化 + astrbot 委托后端 ✅**
+- 做（schema）：`LLMBackend` 加 `kind`（默认 `openai`，兼容现有）+ `provider_id`；`llm_astrbot.make_model_from_backend(*,bridge_url)` 分流：openai→ChatOpenAI、astrbot→`AstrBotChatModel`（实现 astream，经桥 `POST /llm` 委托，MVP 非流式吐一 chunk，send 可注入）。
+- 做（桥）：`group_relay/llm_bridge.do_llm(get_provider,payload)`（纯逻辑）+ main.py `POST /llm` → `Context.get_provider_by_id(id).text_chat(...)` → `completion_text`。
+- 做（前端）：后端类型下拉（openai 显 base_url/key/model；astrbot 显 provider_id）+ `canTest` 按 kind。
 - 不做：astrbot 流式（`text_chat_stream` 桥 SSE，后补）；anthropic/gemini 原生 kind（用到再加）。
-- 判据：`tests/` astrbot-kind 后端经假桥委托产文本（注入假 send）+ openai-kind 不退化；`.venv` 全量绿（A3）；`npm run build` 过；真 AstrBot provider 委托发言 smoke（手动，需 astrbot 跑着）。
+- 判据：`tests/infra/test_llm_astrbot.py`（6）+ `test_model_provider.py`（+1）+ 插件 `test_llm_bridge.py`（3）；`.venv` 全量 **180 passed, 2 skipped**（A3）+ 插件 **17 passed**；`npm run build` 过；真 AstrBot 委托 smoke=手动。
 
-> 下一组 S7.2 平台解耦（channel 绑定 + OutboundClient router）。
+> **S7.1 每好友独立 LLM（a-e）全部完成** ✅：注册表(env key)→ModelProvider(缓存)→前端→可验证(测试+拉模型)→kind 化(openai 自包含 / astrbot 委托)。下一组 S7.2 平台解耦（channel 绑定 + OutboundClient router）。
 
 ### S7.2 平台解耦（channel 绑定 + OutboundClient router）
 

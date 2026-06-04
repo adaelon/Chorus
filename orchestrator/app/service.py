@@ -43,7 +43,8 @@ from .nodes.clarify import ClarifyFn
 from .nodes.curate import Eliminate, Pick, Reassign, ReputationAdjuster
 from .nodes.extract import ClaimExtractor
 from .nodes.frame import AssignFn
-from .llm import make_chat_model_from_backend, ping_model, probe_models, resolve_api_key
+from .llm import ping_model, probe_models, resolve_api_key
+from .llm_astrbot import make_model_from_backend
 from .nodes.generate import GenerateFn, ModelProvider, PersonaProvider
 from .nodes.plan import PlanFn
 from .nodes.schedule import PickFn
@@ -151,11 +152,13 @@ class LLMBackendIn(BaseModel):
 
     id: str
     name: str = ""
+    kind: str = "openai"  # openai | astrbot（S7.1e）
     base_url: str = ""
     api_key_env: str = ""
     model: str = ""
     temperature: float = 0.75
     max_tokens: int | None = None
+    provider_id: str = ""  # kind=astrbot 用
 
 
 class LLMBackendCheck(BaseModel):
@@ -163,11 +166,13 @@ class LLMBackendCheck(BaseModel):
 
     id: str = ""
     name: str = ""
+    kind: str = "openai"
     base_url: str = ""
     api_key_env: str = ""
     model: str = ""
     temperature: float = 0.75
     max_tokens: int | None = None
+    provider_id: str = ""
 
 
 class RecipeIn(BaseModel):
@@ -390,7 +395,7 @@ def create_app(
         app.state.session_factory = sf
         await seed_builtin_recipes(sf)  # S5.4.2a：四内置配方幂等 seed 进库
         pp = persona_provider or persona_provider_from(sf)
-        mp = model_provider or model_provider_from(sf)  # S7.1b：每好友独立模型（按 backend 缓存）
+        mp = model_provider or model_provider_from(sf, bridge_url=bridge_url)  # S7.1b/e：每好友独立模型
         ra = reputation_adjuster or reputation_adjuster_from(sf)
         app.state.persona_provider = pp
         app.state.model_provider = mp
@@ -836,7 +841,7 @@ def create_app(
         不抛 5xx——把失败收进 {ok:False,error} 让前端红灯显错（配置对错由此立判）。
         """
         try:
-            reply = await ping_model(make_chat_model_from_backend(b))
+            reply = await ping_model(make_model_from_backend(b, bridge_url=bridge_url))
             return {"ok": True, "reply": reply}
         except Exception as e:  # noqa: BLE001 - 测试要把任何失败原样回显给用户
             return {"ok": False, "error": str(e) or e.__class__.__name__}

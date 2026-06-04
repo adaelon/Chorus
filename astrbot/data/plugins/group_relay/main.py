@@ -28,6 +28,7 @@ from astrbot.core.platform.message_session import MessageSession
 from astrbot.core.platform.message_type import MessageType
 
 from .inbound import Dedup, decide, make_inbound_msg
+from .llm_bridge import do_llm
 from .outbound import do_outbound
 
 logger = logging.getLogger("astrbot")
@@ -63,6 +64,7 @@ class GroupRelay(Star):
         self._session = aiohttp.ClientSession()
         app = web.Application()
         app.router.add_post("/outbound", self._handle_outbound)
+        app.router.add_post("/llm", self._handle_llm)  # S7.1e：kind=astrbot 后端委托
         runner = web.AppRunner(app)
         await runner.setup()
         site = web.TCPSite(runner, "127.0.0.1", self._port)
@@ -70,7 +72,7 @@ class GroupRelay(Star):
         self._runner = runner
         logger.info(
             f"group_relay 桥已起：出站 http://127.0.0.1:{self._port}/outbound；"
-            f"入站转发 → {self._brain_url}/inbound"
+            f"LLM 委托 /llm；入站转发 → {self._brain_url}/inbound"
         )
 
     async def terminate(self) -> None:
@@ -91,6 +93,16 @@ class GroupRelay(Star):
         body, status = await do_outbound(
             self.context, cmd, make_session=_make_session, make_chain=_make_chain
         )
+        return web.json_response(body, status=status)
+
+    # ---- LLM 委托（S7.1e）：kind=astrbot 后端 → AstrBot 已配 provider ----
+
+    async def _handle_llm(self, request: web.Request) -> web.Response:
+        try:
+            payload = await request.json()
+        except Exception:  # noqa: BLE001
+            return web.json_response({"ok": False, "error": "请求体非合法 JSON"}, status=400)
+        body, status = await do_llm(self.context.get_provider_by_id, payload)
         return web.json_response(body, status=status)
 
     # ---- 入站（S4.2）----

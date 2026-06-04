@@ -85,11 +85,13 @@ class LLMBackend(SQLModel, table=True):
 
     id: str = Field(primary_key=True)
     name: str = ""
+    kind: str = "openai"  # openai（独立自包含）| astrbot（委托 AstrBot provider），§6.18+ S7.1e
     base_url: str = ""
-    api_key_env: str = ""  # 环境变量名（非明文 key）；构造 model 时从 os.environ 读
+    api_key_env: str = ""  # 环境变量名（非明文 key）；kind=openai 构造 model 时从 os.environ 读
     model: str = ""
     temperature: float = 0.75
     max_tokens: int | None = None
+    provider_id: str = ""  # kind=astrbot：委托的 AstrBot provider id（走桥 /llm）
     created_at: float = Field(default_factory=time.time)
 
 
