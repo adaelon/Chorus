@@ -445,7 +445,31 @@
 - 做：`ContactsPage`「LLM 后端」下拉首项「跟随我的 AstrBot bot（bot_ref）」(值=`@bot`)；`backendName`/`llmHint` 适配（选中提示模型+通道都用该 bot、未填 bot_ref 警告回退）。
 - 判据：`npm run build` 过；选「跟随 bot」→ 圆桌发言经该 bot provider + 以该 bot 身份发出（手动 smoke，需 AstrBot 跑着）。
 
-> **S7.3 AstrBot 整 bot 引用（a-c）完成** ✅：桥按 umo 取 using-provider + follow-bot 绑定(ContextVar 注入 group_key) + 前端一键。一个 bot_ref 同供通道+模型，Chorus 引擎(人设/维度/点账本/合成)原样保留。**S7「好友双绑定解耦」当前到此**：S7.1（每好友独立 LLM）✅ + S7.3（AstrBot 整 bot 引用）✅；S7.2（多平台 channel router）缓做（接第二平台再做）。
+> **S7.3 AstrBot 整 bot 引用（a-c）完成** ✅：桥按 umo 取 using-provider + follow-bot 绑定(ContextVar 注入 group_key) + 前端一键。一个 bot_ref 同供通道+模型，Chorus 引擎(人设/维度/点账本/合成)原样保留。
+
+### S7.4 AstrBot bot 作为 LLM 后端（去 Contact.bot_ref，完全统一，§6.18+++）
+
+> S7.3 的进化：把 bot 从「Contact.bot_ref + 选 @bot」上移成 **LLM 后端注册表里一类条目**（每个 AstrBot bot = 一个后端）。好友只选一个后端 = 模型(该 bot provider)+通道(以该 bot 发言)；去掉好友页 bot_ref。复用 S7.3a/3b 机器，只换 bot_id 来源。**取代 @bot 哨兵。** 取舍（已确认）：通道与模型绑成一个选择，不再支持"该 bot 通道+自有模型"正交组合。
+
+**S7.4a `kind="astrbot_bot"` 后端 + 模型解析**
+- 做：`LLMBackend` 加 `bot_id`（platform 实例 id）+ `kind="astrbot_bot"`；`model_provider_from`/`make_model_from_backend`：该 kind → `AstrBotChatModel(bot_ref=backend.bot_id)`（follow-bot，复用 S7.3b）。
+- 不做：通道 provider 改造（S7.4b）；前端（S7.4c）。
+- 判据：`tests/` astrbot_bot 后端 → provider 返回 follow-bot model（bot_ref=bot_id，注入假桥按 umo 委托）；`.venv` 全量绿（A3）。
+
+**S7.4b 通道 provider 从后端取 bot_id + 去 @bot**
+- 做：`bot_ref_provider_from`/`roster_provider_from` 改为「Contact.llm_ref → astrbot_bot 后端 .bot_id」（legacy：Contact.bot_ref 仍存时兜底）；移除/弃用 `@bot` 哨兵（S7.3b）。
+- 不做：前端（S7.4c）。
+- 判据：`tests/` 好友绑 astrbot_bot 后端 → 出站路由到该 bot_id + roster 含该好友；无绑定不在 roster；既有出站测兼容（A3）。
+
+**S7.4c 前端：后端注册表加「AstrBot bot」+ 好友去 bot_ref**
+- 做：`LLMBackendsPage` 类型加「AstrBot bot」(显 bot_id 字段)；`ContactsPage` 移除 bot_ref 字段（只剩 LLM 后端下拉，含各 AstrBot bot）；移除 S7.3c 的 @bot 选项。
+- 判据：`npm run build` 过；建一个 AstrBot bot 后端 → 好友选它 → 圆桌经该 bot provider 发言 + 以该 bot 身份发出（手动 smoke，需 AstrBot 跑着）。
+
+**S7.4d（可选）从桥拉取 platform 实例一键导入**
+- 做：桥加 `GET /bots`（列 platform 实例 id/name）；后端页「从 AstrBot 导入」批量建 astrbot_bot 后端，免手填 bot_id。
+- 判据：插件 `tests/`列实例；前端 build 过；手动导入可见。
+
+> **S7.4 完成后**：好友的"模型来源"= 一个统一菜单（openai 后端 / 各 AstrBot bot），选 bot 即模型+通道合一、无 bot_ref。**S7「好友双绑定解耦」**：S7.1（每好友独立 LLM）✅ + S7.3→S7.4（AstrBot bot 作后端）；S7.2（多平台 channel router）缓做（接第二平台再做）。
 
 ---
 
@@ -464,6 +488,7 @@ S5.2 ─→ S5.4.0(引擎地基) → S5.4.1(编译器) → S5.4.2(配方库) →
 S5(core 稳) ─→ S6.0(配置解耦+包骨架+CLI) → S6.1(打进前端 dist) → S6.2(PyPI 发布 + group_relay 独立分发)
 S2.4(Contact+出站) ─→ S7.1(每好友独立 LLM: 注册表→ModelProvider→前端) ; S7.2(平台解耦: channel→router) 独立于 S7.1（§6.18，两维度并行可切）
 S7.1e + S4.3(bot_ref) ─→ S7.3(AstrBot 整 bot 绑定: channel+llm 合一，§6.18++「C」；桥按 umo 取 using-provider→跟随 bot→前端)
+S7.3 ─→ S7.4(AstrBot bot 作 LLM 后端，去 Contact.bot_ref，§6.18+++；kind=astrbot_bot→通道 provider 取 bot_id→前端去 bot_ref→可选导入)
 ```
 
 **三个关键验收点**：

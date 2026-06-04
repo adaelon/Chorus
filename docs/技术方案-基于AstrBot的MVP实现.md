@@ -380,6 +380,16 @@ ChannelDriver(adapter)  # 统一接口 send(group_key,account_ref,text)；AstrBo
 **取舍**：这类好友硬绑 AstrBot、不能单机；流式同 S7.1e（先非流式）。
 **展开**：切片 **S7.3**（AstrBot 整 bot 绑定：channel+llm 合一），见 §7。
 
+#### §6.18+++ 细化（2026-06-04）：C 进化——AstrBot bot 作为 LLM 后端（去 Contact.bot_ref，完全统一）
+**决策**：把 S7.3 的"bot 挂在 Contact.bot_ref + 选 @bot"上移成**LLM 后端注册表里的一类条目**——每个 AstrBot bot = 一个后端。好友界面**去掉 bot_ref 字段，只选一个 LLM 后端**；选了某个 AstrBot bot，就同时拿到「模型(该 bot 的 provider)+通道(以该 bot 身份发言)」。好友的"模型来源"成为真正统一的一个菜单：`我的 openai 后端 / AstrBot:ada1 / AstrBot:ada2 …`。
+- **机制**：新增 `LLMBackend.kind="astrbot_bot"`（存 `bot_id` = platform 实例 id）。
+  - **模型**：复用 S7.3 的 follow-bot 机制——`AstrBotChatModel(bot_ref=bot_id)`，调用时按 `run_ctx.current_group_key` 构造 bot-umo，桥 `/llm` by umo 取该 bot 在用 provider。
+  - **通道**：`bot_ref_provider`/`roster_provider` 从「读 Contact.bot_ref」改为「读 Contact.llm_ref → 该后端的 bot_id」；出站 `OutboundClient` 不变。
+- **取代**：S7.3 的 `@bot` 哨兵（跟随 Contact.bot_ref）被本方案取代——bot 从 Contact 挪进后端注册表，`Contact.bot_ref` 字段从好友页移除（DB 列保留作迁移兜底）。S7.3a 桥 by-umo + S7.3b `AstrBotChatModel(bot_ref=)` 机器全部复用，只换 bot_id 的来源。
+- **取舍（用户已确认）**：通道与模型**绑成一个选择**——选了 AstrBot bot 即用它自己的 provider，**不再支持"该 bot 通道 + 我自己的模型"**这种正交组合（用户认为"一个 bot 就该用它自己的模型"，可接受）。`kind=astrbot`(provider_id, S7.1e) 仍在，作"指定 provider"的低层选项。
+- **小点**：① bots 需在 Chorus 后端注册表登记一遍（与 AstrBot 重复填 bot_id）——可后补"从桥拉取 platform 实例列表"一键导入。② 纯 web 模式无真实 umo，选 AstrBot bot 做模型会落到 AstrBot 全局 provider（非 bot 专属），非 blocker。
+**展开**：切片 **S7.4**（AstrBot bot 作为后端，去 bot_ref），见 §7。
+
 ---
 
 ## 7. MVP 落地顺序（每步独立可验）
