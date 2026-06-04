@@ -92,6 +92,41 @@ ROUNDTABLE_PRODUCE: dict = {
     ],
 }
 
+# 圆桌·结束再定（§6.21，S10b）：同 ROUNDTABLE，但 human_gate 的 end 不直奔 synthesize——
+# 先过 deliver 选择闸（问人"结论/产出"）→ 路由到 synthesize（出结论）或 produce（出产物）。
+# "开场不知道要哪种，结束才定"。两末端各自 → END。
+ROUNDTABLE_DELIVER: dict = {
+    "recipe": "roundtable_deliver", "version": 1,
+    "nodes": [
+        {"id": "clarify", "use": "clarify"},
+        {"id": "frame", "use": "frame"},
+        {"id": "schedule", "use": "schedule"},
+        {"id": "turn", "use": "turn"},
+        {"id": "human_gate", "use": "human_gate"},
+        {"id": "deliver", "use": "deliver"},
+        {"id": "synthesize", "use": "synthesize"},
+        {"id": "produce", "use": "produce"},
+    ],
+    "edges": [
+        {"from": "START", "to": "clarify"},
+        {"from": "clarify", "to": "frame"},
+        {"from": "frame", "to": "schedule"},
+        {"from": "schedule", "when": {"field": "next_decision", "op": "==", "value": "next_speaker"}, "to": "turn"},
+        {"from": "schedule", "when": {"field": "next_decision", "op": "==", "value": "yield_to_human"}, "to": "human_gate"},
+        {"from": "schedule", "when": {"field": "stop_reason", "op": "==", "value": "moderator"}, "to": "human_gate"},
+        {"from": "schedule", "when": {"field": "stop_reason", "op": "==", "value": "budget"}, "to": "human_gate"},
+        {"from": "schedule", "to": "synthesize"},  # else = 其它 stop（如 empty_roster）安全默认出结论
+        {"from": "turn", "when": {"field": "directed_queue", "op": "truthy"}, "to": "schedule"},
+        {"from": "turn", "to": "human_gate"},  # else
+        {"from": "human_gate", "when": {"field": "next_decision", "op": "==", "value": "end"}, "to": "deliver"},
+        {"from": "human_gate", "to": "schedule"},  # else = continue
+        {"from": "deliver", "when": {"field": "next_decision", "op": "==", "value": "produce"}, "to": "produce"},
+        {"from": "deliver", "to": "synthesize"},  # else = decide（出结论）
+        {"from": "synthesize", "to": "END"},
+        {"from": "produce", "to": "END"},
+    ],
+}
+
 # 圆桌（自动连续，无人在环）：CLARIFY→FRAME→SCHEDULE⇄TURN→…→SYNTHESIZE
 ROUNDTABLE_CONTINUOUS: dict = {
     "recipe": "roundtable_continuous", "version": 1,

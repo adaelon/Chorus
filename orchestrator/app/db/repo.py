@@ -10,7 +10,14 @@ import time
 from sqlmodel import select
 
 from ..llm_astrbot import make_model_from_backend
-from ..recipes.builtin import AUTO, FANOUT, ROUNDTABLE, ROUNDTABLE_CONTINUOUS, ROUNDTABLE_PRODUCE
+from ..recipes.builtin import (
+    AUTO,
+    FANOUT,
+    ROUNDTABLE,
+    ROUNDTABLE_CONTINUOUS,
+    ROUNDTABLE_DELIVER,
+    ROUNDTABLE_PRODUCE,
+)
 from .models import Contact, Conversation, LLMBackend, Recipe
 
 
@@ -23,7 +30,7 @@ async def _contact_bot_id(s, c: Contact) -> str:
     return c.bot_ref or ""  # 迁移兜底：老库好友仍直存 bot_ref
 
 # 内置配方（S5.4.2a）：id = graph["recipe"] slug，启动 seed 进库、内置不可删。
-_BUILTINS = (FANOUT, ROUNDTABLE, ROUNDTABLE_CONTINUOUS, ROUNDTABLE_PRODUCE, AUTO)
+_BUILTINS = (FANOUT, ROUNDTABLE, ROUNDTABLE_CONTINUOUS, ROUNDTABLE_PRODUCE, ROUNDTABLE_DELIVER, AUTO)
 
 
 def persona_provider_from(session_factory):

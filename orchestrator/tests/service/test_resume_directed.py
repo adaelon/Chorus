@@ -30,3 +30,11 @@ def test_other_pause_points_ignore_directed():
     assert _resume_payload(RoundtableResumeReq(end=True, directed=["a"])) == {"end": True}
     assert _resume_payload(RoundtableResumeReq(skip=True, directed=["a"])) == {"skip": True}
     assert _resume_payload(RoundtableResumeReq(answer="ans", directed=["a"])) == {"answer": "ans"}
+
+
+def test_deliver_choice_passthrough():
+    # S10b deliver 选择闸：choice → {"choice": ...}（出产物/出结论）
+    assert _resume_payload(RoundtableResumeReq(choice="produce")) == {"choice": "produce"}
+    assert _resume_payload(RoundtableResumeReq(choice="decide")) == {"choice": "decide"}
+    # end 优先于 choice（不同暂停点，互不渗入）
+    assert _resume_payload(RoundtableResumeReq(end=True, choice="produce")) == {"end": True}

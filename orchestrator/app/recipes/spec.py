@@ -26,7 +26,7 @@ from ..nodes.clarify import clarify
 from ..nodes.curate import curate_interrupt_node
 from ..nodes.fanout import fanout
 from ..nodes.frame import frame
-from ..nodes.human import human_gate
+from ..nodes.human import deliver, human_gate
 from ..nodes.plan import PLAN_BUDGET, plan
 from ..nodes.schedule import SCHEDULE_BUDGET, schedule
 from ..nodes.synthesize import produce, synthesize
@@ -150,6 +150,14 @@ REGISTRY: dict[str, Primitive] = {
         reads=("claims", "history", "picked", "candidates"),
         writes=("output",),
     ),  # S10a 出产物（§6.21）：把 task 当生产任务书交付产物，与 synthesize（出结论）同形、异脑
+    "deliver": _p(
+        deliver,
+        name="deliver",
+        kind="human",
+        reads=(),
+        writes=("next_decision",),
+        emits=("decide", "produce"),
+    ),  # S10b 出产物形态选择闸（§6.21）：结束时问人结论/产出，纯路由（复用 synthesize/produce）
 }
 
 

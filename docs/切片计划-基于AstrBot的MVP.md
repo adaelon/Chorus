@@ -528,10 +528,11 @@
 - 判据：`tests/` produce composer 注入假 model 验 prompt 把 task 放进 brief + 离线兜底；`roundtable_produce` 过 `validate` + 注入假 compose 端到端跑到 output；`.venv` 全量绿（既有零改，A3）。
 - 落地：`task_text`(开场锚点,区别 request_text) + `default_produce_composer`(禁纪要、task 当 brief) + `produce` 节点(compose_produce dep、无则兜底) + `ROUNDTABLE_PRODUCE` + seed/recipe_deps/server 接线。`tests/nodes/test_produce.py`(3) + `tests/recipes/test_roundtable_produce.py`(2);spec/primitives 期望集 +produce。`.venv` 全量 **208 passed, 2 skipped**;synthesize 零改。详见代码链路。
 
-**S10b `deliver` 纯选择闸 + 配方**
+**S10b `deliver` 纯选择闸 + 配方 ✅**
 - 做：`deliver` 节点（human `interrupt`：payload type=`deliver` 问"结论/产出"；resume `{choice:"produce"|"decide"}` → 写 `next_decision∈{decide,produce}`）；spec（human，writes `next_decision`，emits `decide`/`produce`，无 budget）+ REGISTRY；新增内置配方 `roundtable_deliver`（同 ROUNDTABLE，但 `human_gate when end → deliver`，`deliver when next_decision==produce → produce` / else → `synthesize`，两末端 → END）；`RoundtableResumeReq` 加 `choice` 字段、`_resume_payload` 透传（deliver interrupt 时用）；`seed_builtin_recipes` 加 roundtable_deliver。
 - 不做：前端（S10c）；推断式（§6.21 否决）；relay 用 deliver（无真人，relay 仍用确定式配方）。
 - 判据：`tests/` deliver 端到端——人 `{end:true}` → human_gate end → deliver interrupt(type=deliver) → resume `{choice:"produce"}` 跑 produce 到 output / `{choice:"decide"}` 跑 synthesize；`roundtable_deliver` 过 `validate`（human 节点算闸、末端可达 END）；relay/既有零改全绿。
+- 落地：`deliver` 节点(human interrupt 纯选择闸,只写 next_decision)+ spec/REGISTRY + `ROUNDTABLE_DELIVER`(human_gate end→deliver→{produce|synthesize})+ seed + `RoundtableResumeReq.choice`/`_resume_payload` 透传。`tests/recipes/test_roundtable_deliver.py`(4) + resume choice 透传(+1);spec/primitives 期望集 +deliver。`.venv` 全量 **213 passed, 2 skipped**;human_gate/synthesize/produce 节点零改。详见代码链路。
 
 **S10c 前端：形态选择 + 产出渲染**
 - 做：圆桌入口呈现三形态（求结论/出产物/结束再定 → 映射三 recipe id，可做成「圆桌」卡下一个形态选择，或 RecipePicker 三项）；ChatPage 处理 `deliver` interrupt（pauseType=`deliver`，渲染"你要结论还是产出？"两按钮 → `sessionResumeStream {choice}`）；produce/结论产出气泡区分标题（产物 vs 圆桌结论）。

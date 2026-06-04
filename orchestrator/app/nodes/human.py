@@ -65,3 +65,16 @@ async def human_gate(state: GroupState) -> dict:
     if had_pending or text or reason == "budget":
         update["turns_since_human"] = 0
     return update
+
+
+async def deliver(state: GroupState) -> dict:
+    """出产物形态选择闸（§6.21/S10b）：结束讨论时问人"要结论还是产出"，只写路由、不产出。
+
+    human 原语（interrupt 暂停等人）但**纯选择闸**——恢复后据人选写 `next_decision∈{decide,produce}`，
+    由配方条件边路由到 `synthesize`（出结论）/ `produce`（出产物），自己不碰 output（复用两主笔）。
+    用在"结束才知道要哪种"的 `roundtable_deliver`：human_gate 的 end 不直奔 synthesize，而是先过这里。
+    resume 必须**非空**（同 human_gate）：用 `{"choice": "produce"|"decide"}`，缺省/非 produce → decide。
+    """
+    signal = interrupt({"type": "deliver", "options": ["decide", "produce"]})
+    choice = signal.get("choice") if isinstance(signal, dict) else None
+    return {"next_decision": "produce" if choice == "produce" else "decide"}

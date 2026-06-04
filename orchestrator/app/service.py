@@ -115,7 +115,8 @@ class RoundtableResumeReq(BaseModel):
     directed: list[str] | None = None  # §6.20 @定向：只让这几位（contact_id）按 interject 指令修改（S9c）
     answer: str | None = None  # clarify：答复澄清问
     skip: bool = False  # clarify：跳过澄清
-    end: bool = False  # human_gate：手动结束并主笔综合（S3.6h）
+    end: bool = False  # human_gate：手动结束（roundtable→主笔综合；roundtable_deliver→去 deliver 选择闸）
+    choice: str | None = None  # §6.21 deliver 选择闸：结束再定要 "produce"(出产物) 还是 "decide"(出结论)（S10b）
 
 
 class InterjectReq(BaseModel):
@@ -356,6 +357,8 @@ def _resume_payload(req: "RoundtableResumeReq") -> dict:
         return {"answer": req.answer}
     if req.end:
         return {"end": True}
+    if req.choice is not None:  # §6.21 deliver 选择闸（S10b）：结束再定要产出还是结论
+        return {"choice": req.choice}
     payload: dict = {"interject": req.interject}
     if req.directed:  # §6.20 @定向（S9c）：human_gate 据此填 directed_queue
         payload["directed"] = req.directed
