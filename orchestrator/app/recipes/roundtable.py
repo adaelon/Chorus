@@ -19,7 +19,7 @@ from __future__ import annotations
 from ..nodes.clarify import ClarifyFn
 from ..nodes.extract import ClaimExtractor
 from ..nodes.frame import AssignFn
-from ..nodes.generate import GenerateFn, PersonaProvider
+from ..nodes.generate import GenerateFn, ModelProvider, PersonaProvider
 from ..nodes.schedule import PickFn
 from ..nodes.synthesize import ComposeFn
 from .builtin import ROUNDTABLE, ROUNDTABLE_CONTINUOUS
@@ -32,6 +32,7 @@ def build_roundtable_recipe(
     assign: AssignFn | None = None,
     generate: GenerateFn | None = None,
     persona_provider: PersonaProvider | None = None,
+    model_provider: ModelProvider | None = None,
     extract: ClaimExtractor | None = None,
     pick: PickFn | None = None,
     clarify_assess: ClarifyFn | None = None,
@@ -43,6 +44,7 @@ def build_roundtable_recipe(
         "assign": assign,
         "generate": generate,
         "persona_provider": persona_provider,
+        "model_provider": model_provider,
         "extract": extract,
         "pick": pick,
         "compose": compose,

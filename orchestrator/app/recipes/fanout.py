@@ -14,7 +14,7 @@ from __future__ import annotations
 from ..nodes.clarify import ClarifyFn
 from ..nodes.curate import ReputationAdjuster
 from ..nodes.frame import AssignFn
-from ..nodes.generate import GenerateFn, PersonaProvider
+from ..nodes.generate import GenerateFn, ModelProvider, PersonaProvider
 from .builtin import FANOUT
 from .compile import compile_recipe
 
@@ -25,6 +25,7 @@ def build_fanout_recipe(
     assign: AssignFn | None = None,
     generate: GenerateFn | None = None,
     persona_provider: PersonaProvider | None = None,
+    model_provider: ModelProvider | None = None,
     reputation_adjuster: ReputationAdjuster | None = None,
     clarify_assess: ClarifyFn | None = None,
 ):
@@ -33,6 +34,7 @@ def build_fanout_recipe(
         "assign": assign,
         "generate": generate,
         "persona_provider": persona_provider,
+        "model_provider": model_provider,
         "reputation_adjuster": reputation_adjuster,
         "assess": clarify_assess,  # clarify 节点形参名是 assess
     }

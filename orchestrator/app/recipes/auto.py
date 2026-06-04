@@ -19,7 +19,7 @@ AskHuman/Curate（人在环原语）可扩展（registry 加成员 + 配方加 n
 from __future__ import annotations
 
 from ..nodes.frame import AssignFn
-from ..nodes.generate import GenerateFn, PersonaProvider
+from ..nodes.generate import GenerateFn, ModelProvider, PersonaProvider
 from ..nodes.plan import PlanFn
 from ..nodes.synthesize import ComposeFn
 from .builtin import AUTO
@@ -32,6 +32,7 @@ def build_auto_recipe(
     assign: AssignFn | None = None,
     generate: GenerateFn | None = None,
     persona_provider: PersonaProvider | None = None,
+    model_provider: ModelProvider | None = None,
     extract=None,
     planner: PlanFn | None = None,
     compose: ComposeFn | None = None,
@@ -41,6 +42,7 @@ def build_auto_recipe(
         "assign": assign,
         "generate": generate,
         "persona_provider": persona_provider,
+        "model_provider": model_provider,
         "extract": extract,
         "planner": planner,
         "compose": compose,

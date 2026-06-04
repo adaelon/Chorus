@@ -383,10 +383,10 @@
 - 不做：接到 generate（S7.1b）；前端（S7.1c）。
 - 判据：`tests/service/test_llm_backends.py`（3 条）CRUD（建/重409/列/改/改不存在404/删/再删404）+ 缺环境变量抛 MissingApiKeyEnv + 命中 env 造出 ChatOpenAI（key 取自环境、不落库）；`.venv` 全量 **167 passed, 2 skipped**（A3）。
 
-**S7.1b `ModelProvider` + generate/turn 按好友取模型（带缓存）**
-- 做：`ModelProvider = (contact_id)->ChatModel`（与 `PersonaProvider` 对称）；`default_model_provider_from(sf)` 按 `Contact.llm_ref→LLMBackend` 造 `make_chat_model(**backend)`、**按 backend.id 缓存**（不每轮新建）；`default_generator`/`turn` 改为 `model = await model_provider(contact_id)`（无 provider/无绑定→回退注入的全局 model，现状不退化）；`Contact.llm_ref` 字段 + create_app 接 `model_provider`（默认 `_from(sf)`）。
+**S7.1b `ModelProvider` + generate/turn 按好友取模型（带缓存）✅**
+- 做：`generate.py` `ModelProvider=(contact_id)->ChatOpenAI|None`（对称 `PersonaProvider`）+ `default_generator(...,model_provider=None)`（`m=await model_provider(cid) or model`）；`turn`/`fanout` 加 `model_provider` 形参透传；`build_{fanout,roundtable,auto}_recipe` + `recipe_deps` 串 `model_provider`；`repo.model_provider_from(sf,*,cache)` 按 `Contact.llm_ref→LLMBackend→make_chat_model_from_backend` 造模型、**按 backend.id 缓存**、无绑定→None；`Contact.llm_ref` + `ContactIn.llm_ref` + `create_app(model_provider=...)` 默认 `_from(sf)`。
 - 不做：前端选后端（S7.1c）；流式 chunk 路由变化（沿用现有 tags/metadata）。
-- 判据：`tests/` 两好友绑不同 backend → generate 各调对应 model（注入假 provider/假 model 计数）；无绑定回退全局；缓存命中（同 backend 不重建）；既有圆桌/扇出端到端零改全绿（A3）。
+- 判据：`tests/nodes/test_model_provider.py`（3 条）generate 按 contact 路由对模型 + 无绑定回退全局 + provider 绑定/缓存命中(同实例)/无绑定/坏 ref/不存在好友均回退 None；`.venv` 全量 **170 passed, 2 skipped**（A3 零回归）。
 
 **S7.1c 前端：好友选 LLM 后端 + 后端管理页**
 - 做：api `listLlmBackends/createLlmBackend/...`；`ContactsPage` 好友加「LLM 后端」下拉（选 `llm_ref`，空=用默认）；新页/区管理 LLMBackend（name/base_url/api_key_env/model/temperature）。

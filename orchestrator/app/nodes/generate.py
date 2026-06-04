@@ -20,6 +20,8 @@ from ..state import AgentSlot, Candidate, Claim, Msg
 GenerateFn = Callable[..., Awaitable[Candidate]]
 # 按 contact_id 取 persona（鸭子类型：需有 name/title/persona_style/base_stance）。
 PersonaProvider = Callable[[str], Awaitable[object | None]]
+# 按 contact_id 取该好友独立的 LLM（S7.1b，§6.18）；返回 None=回退全局默认 model。
+ModelProvider = Callable[[str], Awaitable[ChatOpenAI | None]]
 
 
 def placeholder_messages(
@@ -71,8 +73,14 @@ def default_generator(
     model: ChatOpenAI,
     persona_provider: PersonaProvider | None = None,
     *,
+    model_provider: ModelProvider | None = None,
     projector: ContextProjector = default_context_projector,
 ) -> GenerateFn:
+    """造一个 generate：按 persona_provider 注入人设、按 model_provider 选每好友模型。
+
+    `model_provider`（S7.1b，§6.18）按 contact_id 取该好友绑定的模型；返回 None 或未注入时
+    回退入参 `model`（全局默认）。这样 ada1 可用 gpt、ada2 可用 deepseek，同场各说各的模型。
+    """
     async def generate(
         slot: AgentSlot,
         request: str,
@@ -85,12 +93,14 @@ def default_generator(
             if persona is not None
             else placeholder_messages(slot, request, history, claims, projector=projector)
         )
+        m = (await model_provider(slot.contact_id)) if model_provider else None
+        m = m or model  # 无绑定/未注入 → 全局默认（现状不退化）
         # 打 contact_id tag/metadata，供 LangGraph messages 流把 token 路由到对应候选卡。
         config = {
             "tags": [f"agent:{slot.contact_id}"],
             "metadata": {"contact_id": slot.contact_id},
         }
-        resp = await robust_ainvoke(model, msgs, config=config)
+        resp = await robust_ainvoke(m, msgs, config=config)
         return Candidate(
             contact_id=slot.contact_id,
             dimension=slot.dimension,

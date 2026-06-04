@@ -14,7 +14,7 @@ from ..llm import make_chat_model
 from ..state import AgentSlot, GroupState, Msg
 from ._common import request_text
 from .extract import ClaimExtractor, default_claim_extractor
-from .generate import GenerateFn, PersonaProvider, default_generator
+from .generate import GenerateFn, ModelProvider, PersonaProvider, default_generator
 
 
 def _speaker_slot(state: GroupState) -> AgentSlot | None:
@@ -34,6 +34,7 @@ async def turn(
     model: ChatOpenAI | None = None,
     generate: GenerateFn | None = None,
     persona_provider: PersonaProvider | None = None,
+    model_provider: ModelProvider | None = None,
     extract: ClaimExtractor | None = None,
 ) -> dict:
     """让 `next_speaker` 发一次言，追加进 history，turns_since_human += 1，并中立提点入账本。
@@ -45,7 +46,9 @@ async def turn(
     slot = _speaker_slot(state)
     if slot is None:
         return {}
-    gen = generate or default_generator(model or make_chat_model(), persona_provider)
+    gen = generate or default_generator(
+        model or make_chat_model(), persona_provider, model_provider=model_provider
+    )
     ext = extract or default_claim_extractor(model or make_chat_model())
     request = request_text(state)
     cand = await gen(slot, request, state.history, state.claims)

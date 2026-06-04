@@ -32,6 +32,7 @@ from .db.engine import init_models, make_engine, make_session_factory
 from .db.models import Contact, Conversation, LLMBackend, Recipe
 from .db.repo import (
     bot_ref_provider_from,
+    model_provider_from,
     persona_provider_from,
     reputation_adjuster_from,
     roster_provider_from,
@@ -42,7 +43,7 @@ from .nodes.clarify import ClarifyFn
 from .nodes.curate import Eliminate, Pick, Reassign, ReputationAdjuster
 from .nodes.extract import ClaimExtractor
 from .nodes.frame import AssignFn
-from .nodes.generate import GenerateFn, PersonaProvider
+from .nodes.generate import GenerateFn, ModelProvider, PersonaProvider
 from .nodes.plan import PlanFn
 from .nodes.schedule import PickFn
 from .nodes.synthesize import ComposeFn
@@ -138,6 +139,7 @@ class ContactIn(BaseModel):
     persona_style: str = ""
     base_stance: str = ""
     bot_ref: str = ""  # AstrBot platform 实例 id（出站以该 bot 身份发言，S4.3）
+    llm_ref: str = ""  # LLMBackend id（该好友独立模型，S7.1b）；空=用全局默认
 
 
 class LLMBackendIn(BaseModel):
@@ -353,6 +355,7 @@ def create_app(
     assign: AssignFn | None = None,
     generate: GenerateFn | None = None,
     persona_provider: PersonaProvider | None = None,
+    model_provider: ModelProvider | None = None,
     reputation_adjuster: ReputationAdjuster | None = None,
     clarify_assess: ClarifyFn | None = None,
     extract: ClaimExtractor | None = None,
@@ -374,8 +377,10 @@ def create_app(
         app.state.session_factory = sf
         await seed_builtin_recipes(sf)  # S5.4.2a：四内置配方幂等 seed 进库
         pp = persona_provider or persona_provider_from(sf)
+        mp = model_provider or model_provider_from(sf)  # S7.1b：每好友独立模型（按 backend 缓存）
         ra = reputation_adjuster or reputation_adjuster_from(sf)
         app.state.persona_provider = pp
+        app.state.model_provider = mp
         app.state.reputation_adjuster = ra
 
         def _build_graphs(saver) -> None:
@@ -385,6 +390,7 @@ def create_app(
                 assign=assign,
                 generate=generate,
                 persona_provider=pp,
+                model_provider=mp,
                 reputation_adjuster=ra,
                 clarify_assess=clarify_assess,
             )
@@ -394,6 +400,7 @@ def create_app(
                 assign=assign,
                 generate=generate,
                 persona_provider=pp,
+                model_provider=mp,
                 extract=extract,
                 pick=pick,
                 clarify_assess=clarify_assess,
@@ -407,6 +414,7 @@ def create_app(
                 assign=assign,
                 generate=generate,
                 persona_provider=pp,
+                model_provider=mp,
                 extract=extract,
                 pick=pick,
                 clarify_assess=None,
@@ -423,6 +431,7 @@ def create_app(
                 "assign": assign,
                 "generate": generate,
                 "persona_provider": pp,
+                "model_provider": mp,
                 "reputation_adjuster": ra,
                 "extract": extract,
                 "pick": pick,
