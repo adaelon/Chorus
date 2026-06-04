@@ -10,6 +10,7 @@ import asyncio
 from collections.abc import Sequence
 from typing import Any
 
+import httpx
 import openai
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_openai import ChatOpenAI
@@ -22,11 +23,16 @@ from tenacity import (
 
 from .config import _parse_chunk_timeout, load_llm_settings
 
-# 可重试的瞬时错误（连接抖动 / 超时 / 5xx）；4xx 业务错误不重试
+# 可重试的瞬时错误（连接抖动 / 超时 / 5xx）；4xx 业务错误不重试。
+# httpx.RemoteProtocolError/ReadError：**流式途中**上游断连（"peer closed connection without
+# sending complete message body (incomplete chunked read)"）——openai SDK 只在建连时把 httpx
+# 错误包成 APIConnectionError，astream 迭代到一半的断连会漏出原始 httpx 异常，故显式纳入重试。
 RETRYABLE = (
     openai.APIConnectionError,
     openai.APITimeoutError,
     openai.InternalServerError,
+    httpx.RemoteProtocolError,
+    httpx.ReadError,
 )
 
 

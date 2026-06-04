@@ -9,7 +9,7 @@ import openai
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
-from app.llm import make_chat_model, robust_invoke
+from app.llm import make_chat_model, robust_ainvoke, robust_invoke
 
 
 class _FlakyModel:
@@ -26,11 +26,42 @@ class _FlakyModel:
         return AIMessage(content="ok")
 
 
+class _FlakyStreamModel:
+    """前 fail_times 次 astream 在吐了几个 chunk 后**途中**抛 httpx 断连，之后正常流完。
+
+    复现实测的偶发：圆桌主持人 prompt 较大 → 上游流式途中关连接
+    （RemoteProtocolError: incomplete chunked read）。
+    """
+
+    def __init__(self, fail_times: int, exc: Exception) -> None:
+        self.fail_times = fail_times
+        self.exc = exc
+        self.calls = 0
+
+    async def astream(self, messages, config=None):  # noqa: ANN001 - 仅测试桩
+        self.calls += 1
+        yield AIMessage(content="部分")
+        if self.calls <= self.fail_times:
+            raise self.exc  # 途中断连（已吐了一个 chunk）
+        yield AIMessage(content="完整")
+
+
 def test_retry_recovers_from_transient_disconnect():
     model = _FlakyModel(fail_times=1)
     out = robust_invoke(model, [HumanMessage(content="hi")], attempts=3, wait_initial=0.0)
     assert out.content == "ok"
     assert model.calls == 2  # 首次失败 + 第二次成功
+
+
+async def test_ainvoke_retries_midstream_remote_protocol_error():
+    """流式途中 RemoteProtocolError（incomplete chunked read）→ 自动重试、从头重流到完整。"""
+    exc = httpx.RemoteProtocolError(
+        "peer closed connection without sending complete message body (incomplete chunked read)"
+    )
+    model = _FlakyStreamModel(fail_times=1, exc=exc)
+    out = await robust_ainvoke(model, [HumanMessage(content="hi")], attempts=3, wait_initial=0.0)
+    assert model.calls == 2  # 首次途中断连 + 第二次成功
+    assert out.content == "部分完整"  # 重试是从头重流（累积到完整）
 
 
 def test_retry_gives_up_and_reraises():
