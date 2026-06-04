@@ -411,9 +411,11 @@
 - 不做：astrbot 流式（`text_chat_stream` 桥 SSE，后补）；anthropic/gemini 原生 kind（用到再加）。
 - 判据：`tests/infra/test_llm_astrbot.py`（6）+ `test_model_provider.py`（+1）+ 插件 `test_llm_bridge.py`（3）；`.venv` 全量 **180 passed, 2 skipped**（A3）+ 插件 **17 passed**；`npm run build` 过；真 AstrBot 委托 smoke=手动。
 
-> **S7.1 每好友独立 LLM（a-e）全部完成** ✅：注册表(env key)→ModelProvider(缓存)→前端→可验证(测试+拉模型)→kind 化(openai 自包含 / astrbot 委托)。下一组 S7.2 平台解耦（channel 绑定 + OutboundClient router）。
+> **S7.1 每好友独立 LLM（a-e）全部完成** ✅：注册表(env key)→ModelProvider(缓存)→前端→可验证(测试+拉模型)→kind 化(openai 自包含 / astrbot 委托)。下一组 **S7.3**（AstrBot 整 bot 引用，§6.18++「C」）；**S7.2 平台解耦缓做**（只有 AstrBot 一个平台、bot_ref 已能出站，等接第二个平台再做）。
 
-### S7.2 平台解耦（channel 绑定 + OutboundClient router）
+### S7.2 平台解耦（channel 绑定 + OutboundClient router）🅿️ 缓做
+
+> **缓做原因（2026-06-04）**：S7.2 是「送达通道」的平台无关 router，与「模型来源」(S7.1/S7.3) 正交。当前**只有 AstrBot 一个平台**、`bot_ref` 自 S4.3 已能精确出站——S7.2 这层通用 router 是纯重构、**在第二个 IM 平台出现前无用户可见回报**（同 S4.5 缓做、conversation_id 重方案"用到再回头"）。**何时回头**：真要接第二个平台（discord/微信/…）时，S7.2 + 该平台 driver 一起做（那时 router 抽象才有意义、才好验）。注意 S7.3 不依赖 S7.2——它复用现成 `bot_ref` 出站。
 
 **S7.2a `Contact.channel{adapter,account_ref}`（兼容旧 bot_ref）**
 - 做：`Contact` 加 `channel:JSON {adapter,account_ref}`；迁移/缺省把旧 `bot_ref`→`{adapter:"astrbot",account_ref:bot_ref}`（读时兼容，零数据丢失）；`ContactIn`/CRUD 透出 channel。
