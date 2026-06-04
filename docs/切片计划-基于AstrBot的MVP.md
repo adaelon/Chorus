@@ -504,9 +504,10 @@
 - 判据：`tests/` @单人→只他发言→回 human_gate（主持人不接力）；@多人→按序全发完才停；不@→维持主持人挑人；定向跳过预算闸；`.venv` 全量绿（A3）。
 - 落地：state 加 `directed_queue`/`directed_active`；@目标走 resume 结构化 `directed` 列表（前端 chips 选 contact_id，避文本解析坑），非靠文本解析；schedule 定向分支置最前跳主持人+预算闸；ROUNDTABLE turn 出边条件化（队列非空回 schedule 批量、空停 human_gate）。`tests/recipes/test_directed.py`（5 条）+ test_schedule delta 断言补 directed_active；relay 无 directed 恒空、零改全绿。`.venv` 全量 **195 passed, 2 skipped**。详见代码链路。
 
-**S9b 合成/点账本：修订追加偏最新 + 旧主张去重**
+**S9b 合成/点账本：修订追加偏最新 + 旧主张去重 ✅**
 - 做：被@者修订作新发言追加；`synthesize`/claims 投影偏该 speaker 最新一版、旧版去重（§6.11）。
 - 判据：`tests/` 同一 speaker 修订后合成用新版、不双算旧主张；`.venv` 全量绿。
+- 落地：单点改 `turn`——`directed_active` 时追加新点前先去重该 speaker 旧 `claims`（supersede）。点账本是 synthesize/远场 context/主持人共读的唯一结构化记忆 → 去重后三处自动只见最新，无需各自改；`history` append-only 留两版原文（§6.11 不丢 ⟂ §6.20 偏最新由此调和）。`tests/recipes/test_directed_revision.py`（3 条）；非定向仍累积、既有测试零改。`.venv` 全量 **198 passed, 2 skipped**。详见代码链路。
 
 **S9c 前端：@ chips + 定向轮渲染**
 - 做：ChatPage 插话框加 roster 成员 @ chips（选谁→@其 contact_id）；定向发言气泡标"应 @ 修订"。

@@ -65,8 +65,13 @@ async def turn(
     )
     turn_idx = state.turns_since_human + 1
     new_claims = await ext(cand.text, slot.contact_id, turn_idx)
+    prior_claims = state.claims
+    if state.directed_active:
+        # §6.20 修订（S9b）：被@者按指令改了立场 → 其旧点过时，去重（偏该人最新一版）。
+        # history 仍 append-only 留两版原文；点账本（合成/远场/主持人都读它）只留最新。
+        prior_claims = [c for c in prior_claims if c.speaker_id != slot.contact_id]
     return {
         "history": [*state.history, msg],
         "turns_since_human": turn_idx,
-        "claims": [*state.claims, *new_claims],
+        "claims": [*prior_claims, *new_claims],
     }
