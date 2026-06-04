@@ -5,6 +5,7 @@ import ChatPage from '../views/ChatPage.vue'
 import ContactsPage from '../views/ContactsPage.vue'
 import RecipesPage from '../views/RecipesPage.vue'
 import HistoryPage from '../views/HistoryPage.vue'
+import LLMBackendsPage from '../views/LLMBackendsPage.vue'
 
 const routes = [
   { path: '/', name: 'home', component: HomeView },
@@ -13,6 +14,7 @@ const routes = [
   { path: '/recipes', name: 'recipes', component: RecipesPage },
   { path: '/history', name: 'history', component: HistoryPage },
   { path: '/contacts', name: 'contacts', component: ContactsPage },
+  { path: '/llm-backends', name: 'llm-backends', component: LLMBackendsPage },
 ]
 
 export default createRouter({

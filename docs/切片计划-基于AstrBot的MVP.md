@@ -388,9 +388,11 @@
 - 不做：前端选后端（S7.1c）；流式 chunk 路由变化（沿用现有 tags/metadata）。
 - 判据：`tests/nodes/test_model_provider.py`（3 条）generate 按 contact 路由对模型 + 无绑定回退全局 + provider 绑定/缓存命中(同实例)/无绑定/坏 ref/不存在好友均回退 None；`.venv` 全量 **170 passed, 2 skipped**（A3 零回归）。
 
-**S7.1c 前端：好友选 LLM 后端 + 后端管理页**
-- 做：api `listLlmBackends/createLlmBackend/...`；`ContactsPage` 好友加「LLM 后端」下拉（选 `llm_ref`，空=用默认）；新页/区管理 LLMBackend（name/base_url/api_key_env/model/temperature）。
-- 判据：`npm run build` 过；建两后端、ada1 绑 gpt / ada2 绑 deepseek，开圆桌各以对应模型发言（手动端到端）。
+**S7.1c 前端：好友选 LLM 后端 + 后端管理页 ✅**
+- 做：api `listLlmBackends/createLlmBackend/updateLlmBackend/deleteLlmBackend`；`LLMBackendsPage`（`/llm-backends`，导航「模型」）后端 CRUD，强调 api_key_env 填变量名非明文；`ContactsPage` 好友加「LLM 后端」`v-select`（绑 `llm_ref`，clearable，空=默认）+ 列表显示绑定模型名 + 并发拉 contacts/backends。
+- 判据：`npm run build` 过（722 模块）；建两后端、ada1 绑 gpt / ada2 绑 deepseek，开圆桌各以对应模型发言（手动端到端，需真实 key 环境变量）。
+
+> **S7.1 每好友独立 LLM（a-c）完成** ✅：LLMBackend 注册表（key 走 env 引用）+ ModelProvider 按好友取模型（缓存）+ 前端绑定/管理。`ada1=gpt、ada2=deepseek` 全线打通。下一组 S7.2 平台解耦（channel 绑定 + OutboundClient router）。
 
 ### S7.2 平台解耦（channel 绑定 + OutboundClient router）
 

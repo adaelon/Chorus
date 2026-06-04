@@ -18,6 +18,17 @@
           label="bot_ref（AstrBot platform 实例 id，出站以该 bot 发言）"
           variant="outlined"
         />
+        <v-select
+          v-model="form.llm_ref"
+          :items="backendItems"
+          item-title="title"
+          item-value="value"
+          label="LLM 后端（该好友用哪个模型；留空=全局默认）"
+          variant="outlined"
+          clearable
+          :hint="backends.length ? '' : '还没有后端，去「模型」页新建一个'"
+          persistent-hint
+        />
         <v-btn color="primary" :loading="loading" :disabled="!form.id || !form.name" @click="save">
           {{ editing ? '保存' : '新建' }}
         </v-btn>
@@ -31,7 +42,7 @@
         v-for="c in contacts"
         :key="c.id"
         :title="`${c.name}（${c.id}）`"
-        :subtitle="`${c.title || '—'} · 风格:${c.persona_style || '—'} · 立场:${c.base_stance || '—'} · bot:${c.bot_ref || '—'} · 信誉:${c.reputation}`"
+        :subtitle="`${c.title || '—'} · 风格:${c.persona_style || '—'} · 立场:${c.base_stance || '—'} · bot:${c.bot_ref || '—'} · 模型:${backendName(c.llm_ref)} · 信誉:${c.reputation}`"
       >
         <template #append>
           <v-btn size="small" variant="text" @click="edit(c)">编辑</v-btn>
@@ -43,16 +54,27 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
-import { createContact, deleteContact, listContacts, updateContact } from '../api/chorus'
+import { computed, onMounted, ref } from 'vue'
+import { createContact, deleteContact, listContacts, listLlmBackends, updateContact } from '../api/chorus'
 
 const contacts = ref([])
+const backends = ref([])
 const loading = ref(false)
 const error = ref('')
 const editing = ref(false)
 
-const blank = () => ({ id: '', name: '', title: '', persona_style: '', base_stance: '', bot_ref: '' })
+const blank = () => ({ id: '', name: '', title: '', persona_style: '', base_stance: '', bot_ref: '', llm_ref: '' })
 const form = ref(blank())
+
+// 下拉项：后端 id → "显示名（model）"
+const backendItems = computed(() =>
+  backends.value.map((b) => ({ value: b.id, title: `${b.name}（${b.model || b.id}）` })),
+)
+function backendName(ref) {
+  if (!ref) return '默认'
+  const b = backends.value.find((x) => x.id === ref)
+  return b ? b.name : ref // 后端已删则显示原始 id
+}
 
 function resetForm() {
   form.value = blank()
@@ -62,7 +84,7 @@ function resetForm() {
 async function load() {
   error.value = ''
   try {
-    contacts.value = await listContacts()
+    ;[contacts.value, backends.value] = await Promise.all([listContacts(), listLlmBackends()])
   } catch (e) {
     error.value = String(e?.message || e)
   }
@@ -72,10 +94,12 @@ async function save() {
   loading.value = true
   error.value = ''
   try {
+    // clearable v-select 清空会置 null；后端 llm_ref 是 str，归一为 ''
+    const payload = { ...form.value, llm_ref: form.value.llm_ref || '' }
     if (editing.value) {
-      await updateContact(form.value.id, form.value)
+      await updateContact(form.value.id, payload)
     } else {
-      await createContact(form.value)
+      await createContact(payload)
     }
     resetForm()
     await load()
@@ -87,7 +111,7 @@ async function save() {
 }
 
 function edit(c) {
-  form.value = { id: c.id, name: c.name, title: c.title, persona_style: c.persona_style, base_stance: c.base_stance, bot_ref: c.bot_ref || '' }
+  form.value = { id: c.id, name: c.name, title: c.title, persona_style: c.persona_style, base_stance: c.base_stance, bot_ref: c.bot_ref || '', llm_ref: c.llm_ref || '' }
   editing.value = true
 }
 
