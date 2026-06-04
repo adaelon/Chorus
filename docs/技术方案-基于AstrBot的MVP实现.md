@@ -353,6 +353,23 @@ ChannelDriver(adapter)  # 统一接口 send(group_key,account_ref,text)；AstrBo
 **何时回头**：真要接第二个 IM 平台时，落第一个非 astrbot driver；要 conversation_id 稳定映射时再上重方案。
 **展开**：切片 **S7 好友双绑定解耦**（两维度一起落档、分批切片，见 §7）。
 
+#### §6.18+ 细化（2026-06-04）：LLMBackend kind 化 + 配置可验证
+学 AstrBot 的 provider 配置流程（`dashboard/routes/config.py`：`/provider/template` 类型模板 · `/check_one` 测试=`provider.test()` 打一句 `REPLY PONG ONLY` · `/model_list` 拉模型列表）。两点改进：
+
+- **配置可验证（解决"裸填、判断不了对错"）**：不照搬 AstrBot 全类型模板（我们引擎是 ChatOpenAI／OpenAI 兼容，deepseek/kimi/openrouter/groq/ollama… 都走 `/v1`，一个 openai 兼容类型≈全覆盖）。只加性价比最高的两件：① **测试端点**（解析 `api_key_env` 真 key → 真打一次 ping → 绿/红立判，仿 check_one）；② **拉模型列表**（`GET {base_url}/v1/models` 能拉就下拉选、拉不到回退手填，仿 model_list）。base_url 预设/全类型模板暂不做。
+- **LLMBackend kind 化（"AstrBot 当后端"）**：让 llm 绑定与 channel **完全对称**——都是 kind/adapter 化的可插拔绑定。
+  ```
+  LLMBackend { id,name, kind,                       # kind ∈ {openai, astrbot, ...}
+               base_url,api_key_env,model,temperature,max_tokens,   # kind=openai 用
+               provider_id }                          # kind=astrbot 用
+  ```
+  - `kind=openai`（现状默认）：`make_chat_model_from_backend` 造 ChatOpenAI。**自包含、不依赖 AstrBot**——S6「pip 单机不碰 telegram 也能用」的命根，必须保留。
+  - `kind=astrbot`：后端只存 AstrBot `provider_id`；`ModelProvider` 返回薄适配器，调桥 `POST /llm {provider_id, messages}` → 插件 `Context.get_provider_by_id(id).text_chat(...)`（已确认 `Context` 暴露 `get_provider_by_id`/`provider_manager.inst_map`）。**复用 AstrBot 已配好、已测过的 provider**（key/模型/校验都在那边）。"这个好友用 AstrBot 的配置" = 它的后端 `kind=astrbot`。
+
+  **统一**：channel.adapter ∈ {astrbot,…}、llm.kind ∈ {openai,astrbot,…}——两维度同构。
+  **取舍（记）**：`kind=astrbot` 走 HTTP 委托时**流式**是麻烦点——引擎吃 `astream`，而 AstrBot `text_chat` 非流式（`text_chat_stream` 有但要把 SSE 也桥过去）。MVP 先**非流式**（那一轮等全文再吐），流式后补。
+**展开**：切片 **S7.1d**（配置可验证：测试 + 拉模型列表）/ **S7.1e**（LLMBackend kind 化 + astrbot 委托），见 §7。
+
 ---
 
 ## 7. MVP 落地顺序（每步独立可验）

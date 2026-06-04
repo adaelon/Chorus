@@ -392,7 +392,26 @@
 - 做：api `listLlmBackends/createLlmBackend/updateLlmBackend/deleteLlmBackend`；`LLMBackendsPage`（`/llm-backends`，导航「模型」）后端 CRUD，强调 api_key_env 填变量名非明文；`ContactsPage` 好友加「LLM 后端」`v-select`（绑 `llm_ref`，clearable，空=默认）+ 列表显示绑定模型名 + 并发拉 contacts/backends。
 - 判据：`npm run build` 过（722 模块）；建两后端、ada1 绑 gpt / ada2 绑 deepseek，开圆桌各以对应模型发言（手动端到端，需真实 key 环境变量）。
 
-> **S7.1 每好友独立 LLM（a-c）完成** ✅：LLMBackend 注册表（key 走 env 引用）+ ModelProvider 按好友取模型（缓存）+ 前端绑定/管理。`ada1=gpt、ada2=deepseek` 全线打通。下一组 S7.2 平台解耦（channel 绑定 + OutboundClient router）。
+> **S7.1 每好友独立 LLM（a-c）完成** ✅：LLMBackend 注册表（key 走 env 引用）+ ModelProvider 按好友取模型（缓存）+ 前端绑定/管理。`ada1=gpt、ada2=deepseek` 全线打通。
+
+### S7.1 细化（学 AstrBot provider 流程，§6.18+）
+
+> 现状裸填 base_url/model/api_key_env，用户判断不了对错；且好友若想用 AstrBot 已配好的 provider 无路。两点：配置可验证 + LLMBackend kind 化（AstrBot 当后端）。两项一起落档、分批切。
+
+**S7.1d 配置可验证：测试端点 + 拉模型列表**
+- 做（后端）：`POST /llm-backends/{id}/test`（解析 `api_key_env` 真 key → `make_chat_model_from_backend` → 打一句 `REPLY PONG ONLY` ping → {ok, detail/error}，仿 AstrBot check_one）；`GET /llm-backends/{id}/models` 或 `POST /llm-backends/probe-models {base_url,api_key_env}`（`GET {base_url}/models` 拉列表，失败给清晰错）。
+- 做（前端）：后端表单加「测试」按钮（绿/红 + 报错文案）；model 字段支持「拉取模型」下拉（拉到选、拉不到回退手填）。
+- 不做：base_url 预设、AstrBot 全类型模板（§6.18+ 已否决）。
+- 判据：`tests/` 测试端点 key 缺失→报错、假 model ping 成功/失败两路；probe-models 解析列表/失败兜底；`.venv` 全量绿（A3）；`npm run build` 过；手动填错 key 点测试变红。
+
+**S7.1e LLMBackend kind 化 + astrbot 委托后端**
+- 做（schema）：`LLMBackend` 加 `kind`（默认 `openai`，兼容现有行）+ `provider_id`（kind=astrbot 用）；`ModelProvider`/`make_chat_model_from_backend` 分流：openai→ChatOpenAI（现状）、astrbot→薄适配器（实现 `astream` 接口，调桥 `POST /llm`）。
+- 做（桥）：`group_relay` 插件加 `POST /llm {provider_id, messages, ...}` → `Context.get_provider_by_id(id).text_chat(...)` 回文本（MVP 非流式，turn 等全文再吐）。
+- 做（前端）：后端表单 kind 选择（openai 显 base_url/key/model；astrbot 显 provider_id）。
+- 不做：astrbot 流式（`text_chat_stream` 桥 SSE，后补）；anthropic/gemini 原生 kind（用到再加）。
+- 判据：`tests/` astrbot-kind 后端经假桥委托产文本（注入假 send）+ openai-kind 不退化；`.venv` 全量绿（A3）；`npm run build` 过；真 AstrBot provider 委托发言 smoke（手动，需 astrbot 跑着）。
+
+> 下一组 S7.2 平台解耦（channel 绑定 + OutboundClient router）。
 
 ### S7.2 平台解耦（channel 绑定 + OutboundClient router）
 
