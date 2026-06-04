@@ -2,7 +2,20 @@
   <div class="flow">
     <div class="endpoint">▷ 开始</div>
     <template v-for="(n, i) in ordered" :key="n.id">
-      <div class="conn">↓</div>
+      <!-- 与上一张卡有真实顺序边 → ↓；否则是上游分叉的“分支落点”，显式标注来源/条件，
+           避免把互斥分支（如 deliver→{出产物|出结论}）误画成线性顺序 -->
+      <div v-if="!conns[i]" class="conn">↓</div>
+      <div v-else class="conn-branch">
+        <span class="bl-head">↳ 分支落点</span>
+        <span v-for="(s, k) in conns[i].srcs" :key="k" class="bl-src">
+          <template v-if="k">·</template>
+          <span class="bl-cond">
+            <template v-if="s.cond">当「{{ s.cond }}」</template>
+            <template v-else-if="s.isElse">否则</template>
+          </span>
+          来自 {{ s.fromLabel }}
+        </span>
+      </div>
       <v-card variant="outlined" class="node" :class="kindClass(n)">
         <div class="node-head">
           <span class="title">{{ label(n) }}</span>
@@ -62,6 +75,23 @@ const ordered = computed(() => {
 })
 const orderIndex = computed(() => Object.fromEntries(ordered.value.map((n, i) => [n.id, i])))
 
+// 每张卡的"上方连接符"：null=与上一张卡有真实顺序边（画 ↓）；否则是分支落点（来自上游分叉，
+// 与上一张卡之间没有边）——列出真实入边的来源/条件，避免互斥分支被竖排误读成线性流。
+const conns = computed(() =>
+  ordered.value.map((n, i) => {
+    const prevId = i === 0 ? 'START' : ordered.value[i - 1].id
+    if (edges.value.some((e) => e.from === prevId && e.to === n.id)) return null
+    const srcs = edges.value
+      .filter((e) => e.to === n.id)
+      .map((e) => ({
+        fromLabel: e.from === 'START' ? '开始' : label(nodeById.value[e.from] || { use: e.from }),
+        cond: humanizeWhen(e.when),
+        isElse: !e.when && edges.value.some((x) => x.from === e.from && x.when),
+      }))
+    return { srcs }
+  }),
+)
+
 const label = (n) => labelOf(n.use)
 const kind = (n) => props.primitives[n.use]?.kind || ''
 const kindZh = (n) => KIND_ZH[kind(n)] || '?'
@@ -100,6 +130,27 @@ function branchesOf(id) {
 .conn {
   opacity: 0.4;
   line-height: 1;
+}
+.conn-branch {
+  width: 100%;
+  max-width: 460px;
+  font-size: 0.74rem;
+  color: rgb(245, 124, 0);
+  background: rgba(245, 124, 0, 0.08);
+  border: 1px dashed rgba(245, 124, 0, 0.5);
+  border-radius: 6px;
+  padding: 3px 10px;
+  margin: 2px 0;
+}
+.conn-branch .bl-head {
+  font-weight: 600;
+  margin-right: 6px;
+}
+.conn-branch .bl-cond {
+  font-weight: 500;
+}
+.conn-branch .bl-src {
+  opacity: 0.9;
 }
 .node {
   width: 100%;

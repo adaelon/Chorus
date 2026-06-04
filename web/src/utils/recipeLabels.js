@@ -10,7 +10,9 @@ export const PRIMITIVE_LABELS = {
   plan: '主持人现编',
   human_gate: '真人插话窗口',
   curate_gate: '人工策展',
-  synthesize: '主笔综合',
+  synthesize: '出结论/综合',
+  produce: '出产物',
+  deliver: '选产出形态',
 }
 
 // next_decision 取值 → 人话（边条件标注）。
@@ -24,6 +26,8 @@ export const DECISION_LABELS = {
   fanout: '并行候选',
   speak: '指定发言',
   synthesize: '收尾',
+  produce: '出产物',
+  decide: '出结论',
 }
 
 export const KIND_ZH = { transform: '变换', router: '路由', human: '人在环' }
