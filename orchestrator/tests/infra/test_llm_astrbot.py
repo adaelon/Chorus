@@ -105,6 +105,12 @@ def test_make_model_from_backend_dispatch(monkeypatch):
     )
     assert isinstance(astr, AstrBotChatModel) and astr.provider_id == "prov"
 
+    # astrbot_bot：整 bot，模型跟随该 bot（follow-bot，bot_ref=bot_id）
+    bot = make_model_from_backend(
+        LLMBackend(id="b", kind="astrbot_bot", bot_id="botX"), bridge_url="http://x"
+    )
+    assert isinstance(bot, AstrBotChatModel) and bot.bot_ref == "botX" and not bot.provider_id
+
     # kind 缺省按 openai（向后兼容）
     assert make_model_from_backend(
         LLMBackend(id="c", base_url="https://x/v1", api_key="sk-x", model="m"), bridge_url="http://x"

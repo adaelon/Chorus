@@ -152,13 +152,14 @@ class LLMBackendIn(BaseModel):
 
     id: str
     name: str = ""
-    kind: str = "openai"  # openai | astrbot（S7.1e）
+    kind: str = "openai"  # openai | astrbot（provider_id，S7.1e）| astrbot_bot（bot_id，S7.4a）
     base_url: str = ""
     api_key: str = ""  # 直接粘贴，存本地 DB（§6.18 修订）
     model: str = ""
     temperature: float = 0.75
     max_tokens: int | None = None
     provider_id: str = ""  # kind=astrbot 用
+    bot_id: str = ""  # kind=astrbot_bot 用（模型+通道）
 
 
 class LLMBackendCheck(BaseModel):
@@ -173,6 +174,7 @@ class LLMBackendCheck(BaseModel):
     temperature: float = 0.75
     max_tokens: int | None = None
     provider_id: str = ""
+    bot_id: str = ""
 
 
 class RecipeIn(BaseModel):

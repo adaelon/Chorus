@@ -100,11 +100,14 @@ class AstrBotChatModel:
 
 
 def make_model_from_backend(backend: Any, *, bridge_url: str) -> Any:
-    """按 `LLMBackend.kind` 造模型：openai→ChatOpenAI；astrbot→AstrBotChatModel（桥委托）。
-
-    kind 缺省/未知按 openai（向后兼容 S7.1a-d 的纯 openai 后端）。
+    """按 `LLMBackend.kind` 造模型：
+    - openai → ChatOpenAI（缺省/未知亦按此，向后兼容）
+    - astrbot → AstrBotChatModel（显式 provider_id，S7.1e）
+    - astrbot_bot → AstrBotChatModel（整 bot：模型跟随该 bot 的 provider，S7.4a；通道由 S7.4b 取 bot_id）
     """
     kind = (getattr(backend, "kind", "") or "openai").lower()
+    if kind == "astrbot_bot":
+        return AstrBotChatModel(bridge_url=bridge_url, bot_ref=getattr(backend, "bot_id", "") or "")
     if kind == "astrbot":
         return AstrBotChatModel(getattr(backend, "provider_id", "") or "", bridge_url)
     return make_chat_model_from_backend(backend)

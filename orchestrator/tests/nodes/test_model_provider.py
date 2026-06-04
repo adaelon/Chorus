@@ -122,6 +122,19 @@ async def _fake_extract_one(text, speaker_id, turn_idx):
     return []
 
 
+async def test_model_provider_from_astrbot_bot_backend(tmp_path):
+    """S7.4a：好友绑 kind=astrbot_bot 后端 → provider 返回 follow-bot model（bot_ref=bot_id）。"""
+    from app.llm_astrbot import AstrBotChatModel
+
+    sf = await _sf(tmp_path)
+    async with sf() as s:
+        s.add(LLMBackend(id="ab", name="AstrBot ada1", kind="astrbot_bot", bot_id="botX"))
+        s.add(Contact(id="ada", name="阿达", llm_ref="ab"))
+        await s.commit()
+    m = await model_provider_from(sf, bridge_url="http://bridge:9876")("ada")
+    assert isinstance(m, AstrBotChatModel) and m.bot_ref == "botX" and not m.provider_id
+
+
 async def test_model_provider_from_astrbot_kind(tmp_path):
     """S7.1e：好友绑 kind=astrbot 后端 → provider 返回 AstrBotChatModel（委托桥）。"""
     from app.llm_astrbot import AstrBotChatModel

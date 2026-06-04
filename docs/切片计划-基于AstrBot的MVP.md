@@ -451,10 +451,10 @@
 
 > S7.3 的进化：把 bot 从「Contact.bot_ref + 选 @bot」上移成 **LLM 后端注册表里一类条目**（每个 AstrBot bot = 一个后端）。好友只选一个后端 = 模型(该 bot provider)+通道(以该 bot 发言)；去掉好友页 bot_ref。复用 S7.3a/3b 机器，只换 bot_id 来源。**取代 @bot 哨兵。** 取舍（已确认）：通道与模型绑成一个选择，不再支持"该 bot 通道+自有模型"正交组合。
 
-**S7.4a `kind="astrbot_bot"` 后端 + 模型解析**
-- 做：`LLMBackend` 加 `bot_id`（platform 实例 id）+ `kind="astrbot_bot"`；`model_provider_from`/`make_model_from_backend`：该 kind → `AstrBotChatModel(bot_ref=backend.bot_id)`（follow-bot，复用 S7.3b）。
+**S7.4a `kind="astrbot_bot"` 后端 + 模型解析 ✅**
+- 做：`LLMBackend` 加 `bot_id`；`make_model_from_backend` 加 `astrbot_bot` 分流 → `AstrBotChatModel(bot_ref=bot_id)`（复用 S7.3b follow-bot）；`LLMBackendIn`/`Check` 加 `bot_id`；老库自动补列。
 - 不做：通道 provider 改造（S7.4b）；前端（S7.4c）。
-- 判据：`tests/` astrbot_bot 后端 → provider 返回 follow-bot model（bot_ref=bot_id，注入假桥按 umo 委托）；`.venv` 全量绿（A3）。
+- 判据：`tests/infra/test_llm_astrbot.py`（dispatch astrbot_bot→bot_ref=bot_id）+ `test_model_provider.py`（好友绑 astrbot_bot→follow-bot model）；`.venv` 全量 **187 passed, 2 skipped**（A3）。
 
 **S7.4b 通道 provider 从后端取 bot_id + 去 @bot**
 - 做：`bot_ref_provider_from`/`roster_provider_from` 改为「Contact.llm_ref → astrbot_bot 后端 .bot_id」（legacy：Contact.bot_ref 仍存时兜底）；移除/弃用 `@bot` 哨兵（S7.3b）。
