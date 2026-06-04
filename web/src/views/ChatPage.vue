@@ -63,6 +63,13 @@
           <div class="bubble-head">
             <span class="name">{{ nameOf(m.sender_id, m.sender_kind) }}</span>
             <v-chip v-if="m.dimension" size="x-small" class="ml-2" label>{{ m.dimension }}</v-chip>
+            <!-- S9c：定向修订标记——ai 被@改 / 人的指令发给谁 -->
+            <v-chip v-if="m.directed" size="x-small" color="primary" variant="tonal" class="ml-2" label>
+              应 @ 修订
+            </v-chip>
+            <v-chip v-if="m.directedTo" size="x-small" color="primary" variant="tonal" class="ml-2" label>
+              @ {{ m.directedTo.join('、') }}
+            </v-chip>
           </div>
           <!-- 澄清问气泡：可答/跳过 -->
           <template v-if="m.kind === 'clarify'">
@@ -104,9 +111,25 @@
         >
           {{ gatePrompt }}
         </div>
+        <!-- S9c：@定向 chips——选谁=只让他按指令改（别人不插嘴）；不选=对全员（现状） -->
+        <div v-if="rosterMembers.length" class="mb-1">
+          <span class="text-caption text-medium-emphasis">@定向（选中=只让他改，不选=对全员）：</span>
+          <v-chip-group v-model="directedTargets" multiple column class="mt-n1">
+            <v-chip
+              v-for="mem in rosterMembers"
+              :key="mem.id"
+              :value="mem.id"
+              size="small"
+              filter
+              variant="outlined"
+            >
+              {{ mem.name }}
+            </v-chip>
+          </v-chip-group>
+        </div>
         <v-text-field
           v-model="interjectText"
-          label="插话（留空=继续讨论）"
+          :label="directedTargets.length ? `给 @${directedLabel} 的修改指令` : '插话（留空=继续讨论）'"
           density="compact"
           variant="outlined"
           hide-details
@@ -114,7 +137,7 @@
         />
         <div class="mt-2">
           <v-btn size="small" color="primary" :disabled="!interjectText" @click="interjectAndResume">
-            插话
+            {{ directedTargets.length ? `@定向修改（${directedTargets.length}人）` : '插话' }}
           </v-btn>
           <v-btn size="small" variant="text" class="ml-2" :loading="loading" @click="continueDiscussion">
             继续
@@ -180,7 +203,19 @@ const gatePrompt = computed(() => {
 const interjectText = ref('')
 const clarifyAnswer = ref('')
 
+// S9c：@定向插话——本场到场成员（chips 源）+ 选中的定向目标 contact_id。
+const directedTargets = ref([])
+const rosterMembers = computed(() => {
+  const ids = Object.keys(dims.value)
+  const base = ids.length ? ids : selectedContacts.value
+  return base.map((id) => ({ id, name: contactNames.value[id] || id }))
+})
+const directedLabel = computed(() =>
+  directedTargets.value.map((id) => contactNames.value[id] || id).join('、'),
+)
+
 let current = null // 当前正在流式追加的 ai 气泡
+let pendingDirected = new Set() // 已 @ 但还没发言的目标 → 这几轮气泡标"应@修订"
 
 const PALETTE = ['#1976D2', '#388E3C', '#D32F2F', '#7B1FA2', '#F57C00', '#0097A7']
 const avatarColor = (id) => PALETTE[hash(id) % PALETTE.length]
@@ -272,6 +307,7 @@ const handlers = {
         text: '',
         dimension: dims.value[e.contact_id],
         streaming: true,
+        directed: pendingDirected.has(e.contact_id), // S9c：被@轮的气泡标记
       }
       messages.value.push(current)
     }
@@ -288,8 +324,10 @@ const handlers = {
         sender_kind: 'ai',
         text: e.text,
         dimension: e.dimension || dims.value[e.contact_id],
+        directed: pendingDirected.has(e.contact_id),
       })
     }
+    pendingDirected.delete(e.contact_id) // 这位定向修订已完成
     current = null
   },
   clarify: (e) => {
@@ -353,6 +391,7 @@ async function start() {
   dims.value = {}
   output.value = ''
   current = null
+  pendingDirected = new Set()
   status.value = '主持人分配维度中…'
   // ?recipe= 时跑库内配方（/recipe/run）；否则默认圆桌。续场共用 resume 端点（共享 saver）。
   const leg = recipeId.value
@@ -371,9 +410,18 @@ const endRoundtable = () =>
 async function interjectAndResume() {
   if (!interjectText.value) return
   const text = interjectText.value
+  const directed = directedTargets.value.slice() // S9c：选中=只让这几位按指令改
   interjectText.value = ''
-  messages.value.push({ sender_id: 'you', sender_kind: 'human', text })
-  await runLeg(() => sessionResumeStream(groupKey.value, { interject: text }, handlers))
+  directedTargets.value = []
+  pendingDirected = directed.length ? new Set(directed) : new Set()
+  messages.value.push({
+    sender_id: 'you',
+    sender_kind: 'human',
+    text,
+    directedTo: directed.length ? directed.map((id) => contactNames.value[id] || id) : null,
+  })
+  const resume = directed.length ? { interject: text, directed } : { interject: text }
+  await runLeg(() => sessionResumeStream(groupKey.value, resume, handlers))
 }
 
 async function answerClarify() {

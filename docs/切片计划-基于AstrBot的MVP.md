@@ -509,9 +509,12 @@
 - 判据：`tests/` 同一 speaker 修订后合成用新版、不双算旧主张；`.venv` 全量绿。
 - 落地：单点改 `turn`——`directed_active` 时追加新点前先去重该 speaker 旧 `claims`（supersede）。点账本是 synthesize/远场 context/主持人共读的唯一结构化记忆 → 去重后三处自动只见最新，无需各自改；`history` append-only 留两版原文（§6.11 不丢 ⟂ §6.20 偏最新由此调和）。`tests/recipes/test_directed_revision.py`（3 条）；非定向仍累积、既有测试零改。`.venv` 全量 **198 passed, 2 skipped**。详见代码链路。
 
-**S9c 前端：@ chips + 定向轮渲染**
+**S9c 前端：@ chips + 定向轮渲染 ✅**
 - 做：ChatPage 插话框加 roster 成员 @ chips（选谁→@其 contact_id）；定向发言气泡标"应 @ 修订"。
 - 判据：`npm run build` 过；@某人只他改、不@对全员（手动）。
+- 落地：后端 `RoundtableResumeReq.directed` + `_resume_payload` interject 分支透传（/roundtable 与 /session resume 两路共用）；ChatPage 让位窗口 `v-chip-group` 选成员 → 发 `{interject,directed}`；`pendingDirected` Set 标定向轮气泡「应 @ 修订」、人的指令气泡标「@名字」；不勾=对全员（现状）。`tests/service/test_resume_directed.py`（4 条）+ `npm run build`（722 模块）；`.venv` 全量 **202 passed, 2 skipped**。详见代码链路。
+
+> **S9（a-c）完成** ✅：圆桌 @定向插话——@某人只他改、不@对全员；多@批量按序跑完回人、主持人不接力；修订偏最新去重；@只在 human_gate（两轮间）生效。
 
 ---
 

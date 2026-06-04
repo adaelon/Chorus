@@ -112,6 +112,7 @@ class RoundtableResumeReq(BaseModel):
     """续场 resume：按当前暂停点选字段——human_gate 用 interject；clarify 用 answer/skip。"""
 
     interject: str | None = None  # human_gate：插话文本；None=不插话继续讨论
+    directed: list[str] | None = None  # §6.20 @定向：只让这几位（contact_id）按 interject 指令修改（S9c）
     answer: str | None = None  # clarify：答复澄清问
     skip: bool = False  # clarify：跳过澄清
     end: bool = False  # human_gate：手动结束并主笔综合（S3.6h）
@@ -355,7 +356,10 @@ def _resume_payload(req: "RoundtableResumeReq") -> dict:
         return {"answer": req.answer}
     if req.end:
         return {"end": True}
-    return {"interject": req.interject}
+    payload: dict = {"interject": req.interject}
+    if req.directed:  # §6.20 @定向（S9c）：human_gate 据此填 directed_queue
+        payload["directed"] = req.directed
+    return payload
 
 
 async def _graph_for(app_state, recipe_id: str):
