@@ -518,6 +518,28 @@
 
 ---
 
+## S10 圆桌产出形态：出结论 / 出产物 / 结束再定（§6.21）
+
+> 单 `synthesize` 只会复述讨论（共识+分歧），丢了"用户要的交付物形态"——任务是"帮我写 prompt"却给会议纪要。拆成三可选原语：出结论(`synthesize` 现状)/ 出产物(`produce`)/ 结束再定(`deliver` 纯选择闸)，体现在配方、人选。依赖现状（无新前置）；`synthesize` 保名不动（A3 零回归）。
+
+**S10a `produce` 原语（出产物）+ 配方**
+- 做：`produce` 节点 + `default_produce_composer`（把**原始 task**(request_text) 当生产任务书、`claims` 当约束 → 交付产物本身，先点明"要交付的是 ___"再出、不复述讨论）；REGISTRY/spec（transform，reads `history`/`claims`，writes `output`，dep 键 `compose_produce` 区别于 synthesize 的 `compose`）；新增内置配方 `roundtable_produce`（= `ROUNDTABLE` 末端 synthesize 节点换 produce、相关边改指 produce）；`server.py` 接 `default_produce_composer`、`recipe_deps`/三 build_* 串 `compose_produce`；`seed_builtin_recipes` 加 roundtable_produce。
+- 不做：`deliver`（S10b）；前端（S10c）；改 `synthesize`（出结论=现状）；L3 planner 词表加 produce（留后）。
+- 判据：`tests/` produce composer 注入假 model 验 prompt 把 task 放进 brief + 离线兜底；`roundtable_produce` 过 `validate` + 注入假 compose 端到端跑到 output；`.venv` 全量绿（既有零改，A3）。
+
+**S10b `deliver` 纯选择闸 + 配方**
+- 做：`deliver` 节点（human `interrupt`：payload type=`deliver` 问"结论/产出"；resume `{choice:"produce"|"decide"}` → 写 `next_decision∈{decide,produce}`）；spec（human，writes `next_decision`，emits `decide`/`produce`，无 budget）+ REGISTRY；新增内置配方 `roundtable_deliver`（同 ROUNDTABLE，但 `human_gate when end → deliver`，`deliver when next_decision==produce → produce` / else → `synthesize`，两末端 → END）；`RoundtableResumeReq` 加 `choice` 字段、`_resume_payload` 透传（deliver interrupt 时用）；`seed_builtin_recipes` 加 roundtable_deliver。
+- 不做：前端（S10c）；推断式（§6.21 否决）；relay 用 deliver（无真人，relay 仍用确定式配方）。
+- 判据：`tests/` deliver 端到端——人 `{end:true}` → human_gate end → deliver interrupt(type=deliver) → resume `{choice:"produce"}` 跑 produce 到 output / `{choice:"decide"}` 跑 synthesize；`roundtable_deliver` 过 `validate`（human 节点算闸、末端可达 END）；relay/既有零改全绿。
+
+**S10c 前端：形态选择 + 产出渲染**
+- 做：圆桌入口呈现三形态（求结论/出产物/结束再定 → 映射三 recipe id，可做成「圆桌」卡下一个形态选择，或 RecipePicker 三项）；ChatPage 处理 `deliver` interrupt（pauseType=`deliver`，渲染"你要结论还是产出？"两按钮 → `sessionResumeStream {choice}`）；produce/结论产出气泡区分标题（产物 vs 圆桌结论）。
+- 判据：`npm run build` 过；三路径手动——开场选出产物→交付产物（非纪要）；结束再定→discuss→结束→问形态→按选出对应产出；选结论=现状。
+
+> **三关键验收**：S10a `produce` 真把 task 当 brief 出产物（解最初痛点）；S10b `deliver` 选择闸纯路由、复用 synthesize/produce 零重复；S10c 三形态人可选。
+
+---
+
 ## 依赖与执行顺序
 
 ```

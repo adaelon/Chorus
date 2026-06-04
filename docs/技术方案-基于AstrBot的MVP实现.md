@@ -407,6 +407,24 @@ ChannelDriver(adapter)  # 统一接口 send(group_key,account_ref,text)；AstrBo
 - **边界**：@ 只在 `human_gate`（两轮之间）生效——只能在某人说完的间隙 @，**不支持打断正在流式输出的那一句**（真·barge-in=取消在跑的 astream，另列、暂不做）。`turn` 定向时 prompt 框架为"真人点名要你按〈指令〉修改"（需一个 directed 标记或读最近 human 指令）。
 **展开**：切片 **S9**（圆桌 @定向插话），见 §7。
 
+### §6.21 圆桌产出拆三原语（出结论 / 出产物 / 结束再定）
+
+**病**：单 `synthesize` 只会把发言压成"共识 + 分歧"的会议纪要——任务是"帮我写个 prompt"时，它复述讨论而非交付用户要的那个产物。"圆桌是手段、产出是目的"，现停在手段层。
+
+**决策**：圆桌产出拆三个可选原语——**出结论**(`synthesize` 现状)/ **出产物**(`produce`)/ **结束再定**(`deliver` 纯选择闸)，体现在配方、由人选。
+- **`produce`**（transform）：把**原始 task 当生产任务书**、`claims` 当约束 → 直接交付那个东西本身（要 prompt 就写出可用 prompt），先点明"要交付的是 ___"再出、不复述讨论。
+- **`deliver`**（human，纯选择闸）：结束讨论时 `interrupt` 问"你要结论还是产出？"→ 写 `next_decision∈{decide,produce}`，**路由在边上复用** `synthesize`/`produce` 节点（自己不产出）。
+- **配方三选一**：`roundtable`(末端 synthesize) / `roundtable_produce`(末端 produce) / `roundtable_deliver`(human_gate end→deliver→{synthesize|produce})。开场知道要哪种 → 选前两张；结束才知道 → 选第三张。
+
+**否决**：
+- 单 synthesize 兜全部：只会复述讨论、丢失交付物形态（病源）。
+- 一原语带 mode 开关：`args` 机制未通电，且不如三张卡在 L4 画布可见。
+- `deliver` 自己推断形态：又赌一次模型判断，违背"结束才知道"的卖点。
+
+**命门**：`produce` 要点=约束非结论（别又退化成总结）；`deliver` 是纯选择闸（只 emit、不产出，路由复用 synthesize/produce）；relay 无真人不用 `deliver`（用确定式前两张）；`synthesize` 保名不动（出结论=现状，零回归）。
+**何时回头**：`produce` 仍常猜错形态 → 在 clarify/frame 早绑 deliverable 进 state；要"产物 + 附结论"双出时再加变体；L3 planner 词表加 `produce` 留后。
+**展开**：切片 **S10**（见切片计划）。
+
 ---
 
 ## 7. MVP 落地顺序（每步独立可验）
