@@ -135,6 +135,9 @@ export const listLlmBackends = () => brainApi.get('/llm-backends').then((r) => r
 export const createLlmBackend = (b) => brainApi.post('/llm-backends', b).then((r) => r.data)
 export const updateLlmBackend = (id, b) => brainApi.put(`/llm-backends/${id}`, b).then((r) => r.data)
 export const deleteLlmBackend = (id) => brainApi.delete(`/llm-backends/${id}`).then((r) => r.data)
+// S7.1d 配置可验证：测试连通（ping）/ 拉模型列表（GET /v1/models）。按表单当前值校验，可未落库。
+export const testLlmBackend = (b) => brainApi.post('/llm-backends/test', b).then((r) => r.data)
+export const probeLlmModels = (b) => brainApi.post('/llm-backends/probe-models', b).then((r) => r.data)
 
 // Contact 注册表 CRUD（S2.4）
 export const listContacts = () => brainApi.get('/contacts').then((r) => r.data)

@@ -21,7 +21,17 @@
           placeholder="DEEPSEEK_KEY"
           variant="outlined"
         />
-        <v-text-field v-model="form.model" label="model（模型名）" variant="outlined" />
+        <v-combobox
+          v-model="form.model"
+          :items="modelOptions"
+          label="model（模型名；可手填或点「拉取模型」选）"
+          variant="outlined"
+          :loading="probing"
+        >
+          <template #append-inner>
+            <v-btn size="small" variant="text" :disabled="!form.base_url || !form.api_key_env" @click="probe">拉取模型</v-btn>
+          </template>
+        </v-combobox>
         <v-row>
           <v-col cols="6">
             <v-text-field v-model.number="form.temperature" label="temperature" type="number" step="0.05" variant="outlined" />
@@ -33,7 +43,24 @@
         <v-btn color="primary" :loading="loading" :disabled="!form.id || !form.name" @click="save">
           {{ editing ? '保存' : '新建' }}
         </v-btn>
+        <v-btn
+          class="ml-2"
+          variant="tonal"
+          :loading="testing"
+          :disabled="!form.base_url || !form.api_key_env || !form.model"
+          @click="test"
+        >
+          测试连通
+        </v-btn>
         <v-btn v-if="editing" class="ml-2" variant="text" @click="resetForm">取消</v-btn>
+
+        <v-alert
+          v-if="testResult"
+          :type="testResult.ok ? 'success' : 'error'"
+          class="mt-4"
+          density="compact"
+          :text="testResult.ok ? `连通正常，回包：${testResult.reply || '（空）'}` : `连通失败：${testResult.error}`"
+        />
       </v-card-text>
     </v-card>
 
@@ -57,12 +84,23 @@
 
 <script setup>
 import { onMounted, ref } from 'vue'
-import { createLlmBackend, deleteLlmBackend, listLlmBackends, updateLlmBackend } from '../api/chorus'
+import {
+  createLlmBackend,
+  deleteLlmBackend,
+  listLlmBackends,
+  probeLlmModels,
+  testLlmBackend,
+  updateLlmBackend,
+} from '../api/chorus'
 
 const backends = ref([])
 const loading = ref(false)
 const error = ref('')
 const editing = ref(false)
+const testing = ref(false)
+const probing = ref(false)
+const testResult = ref(null) // { ok, reply?, error? }
+const modelOptions = ref([])
 
 const blank = () => ({ id: '', name: '', base_url: '', api_key_env: '', model: '', temperature: 0.75, max_tokens: null })
 const form = ref(blank())
@@ -70,6 +108,40 @@ const form = ref(blank())
 function resetForm() {
   form.value = blank()
   editing.value = false
+  testResult.value = null
+  modelOptions.value = []
+}
+
+// S7.1d：测试连通（解析 env key 真打一次 ping）。配置对错由此立判。
+async function test() {
+  testing.value = true
+  testResult.value = null
+  try {
+    testResult.value = await testLlmBackend(form.value)
+  } catch (e) {
+    testResult.value = { ok: false, error: String(e?.message || e) }
+  } finally {
+    testing.value = false
+  }
+}
+
+// S7.1d：拉模型列表（GET {base_url}/v1/models）。拉到填进下拉，拉不到给提示、回退手填。
+async function probe() {
+  probing.value = true
+  error.value = ''
+  try {
+    const r = await probeLlmModels({ base_url: form.value.base_url, api_key_env: form.value.api_key_env })
+    if (r.ok) {
+      modelOptions.value = r.models
+      if (!r.models.length) error.value = '该后端没返回模型列表，请手填 model'
+    } else {
+      error.value = `拉取模型失败：${r.error}（可手填 model）`
+    }
+  } catch (e) {
+    error.value = String(e?.message || e)
+  } finally {
+    probing.value = false
+  }
 }
 
 async function load() {
@@ -107,6 +179,8 @@ function edit(b) {
     model: b.model, temperature: b.temperature, max_tokens: b.max_tokens,
   }
   editing.value = true
+  testResult.value = null
+  modelOptions.value = b.model ? [b.model] : []
 }
 
 async function remove(id) {

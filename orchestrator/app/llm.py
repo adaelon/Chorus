@@ -6,12 +6,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import Sequence
 from typing import Any
 
 import openai
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 from tenacity import (
     retry,
@@ -51,6 +52,17 @@ class MissingApiKeyEnv(RuntimeError):
     """LLM 后端的 api_key_env 指向的环境变量缺失/为空（key 不落库，须由环境提供）。"""
 
 
+def resolve_api_key(api_key_env: str, *, who: str = "?") -> str:
+    """从环境变量名解析真实 key；缺失/为空抛 MissingApiKeyEnv（含后端标识与变量名）。"""
+    key = os.environ.get(api_key_env, "") if api_key_env else ""
+    if not key:
+        raise MissingApiKeyEnv(
+            f"LLM 后端 {who!r} 的 api_key_env={api_key_env!r} 未在环境变量中找到（或为空）；"
+            f"请设置该环境变量后重试（key 不落库、不进 git）。"
+        )
+    return key
+
+
 def make_chat_model_from_backend(backend: Any, **overrides: Any) -> ChatOpenAI:
     """按 `LLMBackend` 记录造 ChatOpenAI（S7.1a，§6.18：每好友独立模型）。
 
@@ -58,14 +70,8 @@ def make_chat_model_from_backend(backend: Any, **overrides: Any) -> ChatOpenAI:
     抛 `MissingApiKeyEnv`（清晰报错，含后端名与变量名）。`backend` 鸭子类型：需有
     name/base_url/api_key_env/model/temperature/max_tokens。
     """
-    env_name = getattr(backend, "api_key_env", "") or ""
-    api_key = os.environ.get(env_name, "") if env_name else ""
-    if not api_key:
-        name = getattr(backend, "name", "") or getattr(backend, "id", "?")
-        raise MissingApiKeyEnv(
-            f"LLM 后端 {name!r} 的 api_key_env={env_name!r} 未在环境变量中找到（或为空）；"
-            f"请设置该环境变量后重试（key 不落库、不进 git）。"
-        )
+    who = getattr(backend, "name", "") or getattr(backend, "id", "?")
+    api_key = resolve_api_key(getattr(backend, "api_key_env", "") or "", who=who)
     params: dict[str, Any] = {
         "base_url": backend.base_url,
         "api_key": api_key,
@@ -132,3 +138,32 @@ async def robust_ainvoke(
         return AIMessage(content="".join(parts))
 
     return await _call()
+
+
+async def ping_model(model: ChatOpenAI, *, timeout: float = 45.0) -> str:
+    """打一句最小 prompt 验活（仿 AstrBot provider.test()），返回回包文本；异常/超时上抛。
+
+    S7.1d 配置可验证：测试一个后端是否真能对话（key/base_url/model 三者齐全且可达）。
+    单次（attempts=1）不重试——测试要快速暴露问题，不掩盖瞬时错误。
+    """
+    msg = await asyncio.wait_for(
+        robust_ainvoke(model, [HumanMessage(content="REPLY `PONG` ONLY")], attempts=1),
+        timeout=timeout,
+    )
+    return str(msg.content)
+
+
+async def probe_models(base_url: str, api_key: str, *, timeout: float = 15.0) -> list[str]:
+    """拉 OpenAI 兼容后端的模型列表（`GET {base_url}/models`），返回模型 id 列表（S7.1d）。
+
+    失败（网络/鉴权/非 OpenAI 兼容）上抛异常，由端点转成清晰错；前端拉不到可回退手填。
+    """
+    import httpx
+
+    url = base_url.rstrip("/") + "/models"
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.get(url, headers={"Authorization": f"Bearer {api_key}"})
+        resp.raise_for_status()
+        data = resp.json()
+    items = data.get("data", data) if isinstance(data, dict) else data
+    return [m["id"] for m in items if isinstance(m, dict) and m.get("id")]

@@ -398,11 +398,11 @@
 
 > 现状裸填 base_url/model/api_key_env，用户判断不了对错；且好友若想用 AstrBot 已配好的 provider 无路。两点：配置可验证 + LLMBackend kind 化（AstrBot 当后端）。两项一起落档、分批切。
 
-**S7.1d 配置可验证：测试端点 + 拉模型列表**
-- 做（后端）：`POST /llm-backends/{id}/test`（解析 `api_key_env` 真 key → `make_chat_model_from_backend` → 打一句 `REPLY PONG ONLY` ping → {ok, detail/error}，仿 AstrBot check_one）；`GET /llm-backends/{id}/models` 或 `POST /llm-backends/probe-models {base_url,api_key_env}`（`GET {base_url}/models` 拉列表，失败给清晰错）。
-- 做（前端）：后端表单加「测试」按钮（绿/红 + 报错文案）；model 字段支持「拉取模型」下拉（拉到选、拉不到回退手填）。
+**S7.1d 配置可验证：测试端点 + 拉模型列表 ✅**
+- 做（后端）：`llm.py` 抽 `resolve_api_key` + `ping_model`（打 `REPLY PONG ONLY`，单次不重试，超时）+ `probe_models`（httpx GET `{base_url}/models`）；`POST /llm-backends/test`（按表单值 make→ping→{ok,reply|error}，仿 check_one）；`POST /llm-backends/probe-models`（仿 model_list）。**都按表单当前值校验、可未落库；失败收 {ok:False,error} 不抛 5xx**。
+- 做（前端）：后端表单「测试连通」按钮（绿/红 alert）；model 改 `v-combobox` + 「拉取模型」按钮（拉到选、拉不到回退手填）。
 - 不做：base_url 预设、AstrBot 全类型模板（§6.18+ 已否决）。
-- 判据：`tests/` 测试端点 key 缺失→报错、假 model ping 成功/失败两路；probe-models 解析列表/失败兜底；`.venv` 全量绿（A3）；`npm run build` 过；手动填错 key 点测试变红。
+- 判据：`tests/service/test_llm_backends.py`（+4）ping_model 假 model + test 端点 key 缺失/ping 成/败 + probe 列表/缺 key 兜底；`.venv` 全量 **174 passed, 2 skipped**（A3）；`npm run build` 过。
 
 **S7.1e LLMBackend kind 化 + astrbot 委托后端**
 - 做（schema）：`LLMBackend` 加 `kind`（默认 `openai`，兼容现有行）+ `provider_id`（kind=astrbot 用）；`ModelProvider`/`make_chat_model_from_backend` 分流：openai→ChatOpenAI（现状）、astrbot→薄适配器（实现 `astream` 接口，调桥 `POST /llm`）。

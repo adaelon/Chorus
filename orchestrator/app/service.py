@@ -43,6 +43,7 @@ from .nodes.clarify import ClarifyFn
 from .nodes.curate import Eliminate, Pick, Reassign, ReputationAdjuster
 from .nodes.extract import ClaimExtractor
 from .nodes.frame import AssignFn
+from .llm import make_chat_model_from_backend, ping_model, probe_models, resolve_api_key
 from .nodes.generate import GenerateFn, ModelProvider, PersonaProvider
 from .nodes.plan import PlanFn
 from .nodes.schedule import PickFn
@@ -149,6 +150,18 @@ class LLMBackendIn(BaseModel):
     """
 
     id: str
+    name: str = ""
+    base_url: str = ""
+    api_key_env: str = ""
+    model: str = ""
+    temperature: float = 0.75
+    max_tokens: int | None = None
+
+
+class LLMBackendCheck(BaseModel):
+    """后端配置可验证（S7.1d）：测试连通 / 拉模型列表用，按表单当前值校验（可未落库）。"""
+
+    id: str = ""
     name: str = ""
     base_url: str = ""
     api_key_env: str = ""
@@ -815,6 +828,27 @@ def create_app(
             await s.delete(obj)
             await s.commit()
             return {"deleted": bid}
+
+    @app.post("/llm-backends/test")
+    async def test_llm_backend(b: LLMBackendCheck):
+        """验活（S7.1d，仿 AstrBot check_one）：解析 env key→打一句 ping→{ok,reply|error}。
+
+        不抛 5xx——把失败收进 {ok:False,error} 让前端红灯显错（配置对错由此立判）。
+        """
+        try:
+            reply = await ping_model(make_chat_model_from_backend(b))
+            return {"ok": True, "reply": reply}
+        except Exception as e:  # noqa: BLE001 - 测试要把任何失败原样回显给用户
+            return {"ok": False, "error": str(e) or e.__class__.__name__}
+
+    @app.post("/llm-backends/probe-models")
+    async def probe_llm_models(b: LLMBackendCheck):
+        """拉模型列表（S7.1d，仿 AstrBot model_list）：GET {base_url}/models→{ok,models|error}。"""
+        try:
+            key = resolve_api_key(b.api_key_env, who=b.name or b.id or "probe")
+            return {"ok": True, "models": await probe_models(b.base_url, key)}
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "models": [], "error": str(e) or e.__class__.__name__}
 
     # ---- 配方库 CRUD（S5.4.2a，§6.16）----
 
