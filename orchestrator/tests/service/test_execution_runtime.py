@@ -8,12 +8,15 @@ import pytest
 
 from app.execution_loop import build_execution_loop
 from app.execution_runtime import (
+    ToolExecutorGate,
     execution_checkpointer,
     execution_sse,
     filter_audit_rows,
+    http_readiness_probe,
     project_trace_events,
     stream_with_heartbeat,
 )
+from app.nodes.tool_dispatch import tool_dispatch
 from app.state import GroupState, ToolCallIntent, ToolResult, TraceEvent
 
 
@@ -60,6 +63,16 @@ def _tool_payload(call_id: str = "call-1") -> tuple[str, ...]:
         call_id,
         '","tool_kind":"sandbox_exec","tool_name":"python",',
         '"requires_sandbox":true,"args":{"code":"print(1)"}}',
+    )
+
+
+def _intent(call_id: str = "call-1") -> ToolCallIntent:
+    return ToolCallIntent(
+        call_id=call_id,
+        kind="sandbox_exec",
+        tool_name="python",
+        args={"code": "print(1)"},
+        requires_sandbox=True,
     )
 
 
@@ -138,3 +151,102 @@ def test_projected_trace_events_are_queryable_by_thread_run_node_and_status():
     assert degraded[0]["data"]["call_id"] == "call-1"
     assert len(filter_audit_rows(rows, node="tool_dispatch", status="retry")) == 1
     assert filter_audit_rows(rows, run_id="run-missing") == []
+
+
+@pytest.mark.asyncio
+async def test_http_readiness_probe_treats_2xx_3xx_as_ready(monkeypatch):
+    class Response:
+        status = 204
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    monkeypatch.setattr("app.execution_runtime.urlopen", lambda *_args, **_kwargs: Response())
+
+    assert await http_readiness_probe("http://shipyard/healthz") is True
+
+
+@pytest.mark.asyncio
+async def test_http_readiness_probe_treats_connection_error_as_down(monkeypatch):
+    def fail(*_args, **_kwargs):
+        raise OSError("connection refused")
+
+    monkeypatch.setattr("app.execution_runtime.urlopen", fail)
+
+    assert await http_readiness_probe("http://shipyard/healthz") is False
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_gate_degrades_without_calling_tool_when_shipyard_down():
+    calls = 0
+
+    async def probe() -> bool:
+        return False
+
+    async def execute(_intent: ToolCallIntent) -> ToolResult:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("executor must not run when shipyard is down")
+
+    out = await tool_dispatch(
+        GroupState(group_key="down", pending_tools=[_intent("down")]),
+        execute=ToolExecutorGate(execute, readiness_probe=probe),
+    )
+
+    assert calls == 0
+    assert out["sandbox_ready"] is False
+    assert out["run_status"] == "degraded"
+    assert out["last_tool_error"].code == "sandbox_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_gate_allows_dispatch_after_shipyard_recovers():
+    readiness = [False, True]
+    calls = 0
+
+    async def probe() -> bool:
+        return readiness.pop(0)
+
+    async def execute(intent: ToolCallIntent) -> ToolResult:
+        nonlocal calls
+        calls += 1
+        return ToolResult(call_id=intent.call_id, tool_name=intent.tool_name, ok=True)
+
+    gate = ToolExecutorGate(execute, readiness_probe=probe)
+
+    down = await tool_dispatch(
+        GroupState(group_key="recover", pending_tools=[_intent("first")]),
+        execute=gate,
+    )
+    recovered = await tool_dispatch(
+        GroupState(group_key="recover", pending_tools=[_intent("second")]),
+        execute=gate,
+    )
+
+    assert down["sandbox_ready"] is False
+    assert calls == 1
+    assert recovered["sandbox_ready"] is True
+    assert recovered["tool_results"][0].ok is True
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_gate_queues_calls_over_concurrency_limit():
+    active = 0
+    max_active = 0
+
+    async def execute(intent: ToolCallIntent) -> ToolResult:
+        nonlocal active, max_active
+        active += 1
+        max_active = max(max_active, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        return ToolResult(call_id=intent.call_id, tool_name=intent.tool_name, ok=True)
+
+    gate = ToolExecutorGate(execute, max_concurrency=1)
+    results = await asyncio.gather(gate(_intent("a")), gate(_intent("b")))
+
+    assert max_active == 1
+    assert [r.call_id for r in results] == ["a", "b"]

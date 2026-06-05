@@ -9,14 +9,19 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncIterable, AsyncIterator, Iterable
+from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Callable, Iterable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+from urllib.error import URLError
+from urllib.request import urlopen
 
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
+from .nodes.tool_dispatch import ToolDispatchError, ToolExecutor
 from .state import TraceEvent
+
+ReadinessProbe = Callable[[], Awaitable[bool]]
 
 
 @asynccontextmanager
@@ -102,3 +107,46 @@ def filter_audit_rows(
             continue
         out.append(row)
     return out
+
+
+async def http_readiness_probe(url: str, *, timeout: float = 2.0) -> bool:
+    """Probe a Shipyard-compatible readiness endpoint with stdlib HTTP."""
+
+    def _open() -> bool:
+        try:
+            with urlopen(url, timeout=timeout) as resp:  # noqa: S310 - operator-configured URL
+                return 200 <= resp.status < 400
+        except (OSError, URLError):
+            return False
+
+    return await asyncio.to_thread(_open)
+
+
+class ToolExecutorGate:
+    """Wrap a real tool executor with Shipyard readiness and concurrency control."""
+
+    def __init__(
+        self,
+        execute: ToolExecutor,
+        *,
+        readiness_probe: ReadinessProbe | None = None,
+        max_concurrency: int = 1,
+    ) -> None:
+        if max_concurrency < 1:
+            raise ValueError("max_concurrency must be >= 1")
+        self._execute = execute
+        self._readiness_probe = readiness_probe
+        self._semaphore = asyncio.Semaphore(max_concurrency)
+
+    async def __call__(self, intent):
+        if intent.requires_sandbox and self._readiness_probe is not None:
+            ready = await self._readiness_probe()
+            if not ready:
+                raise ToolDispatchError(
+                    "sandbox_unavailable",
+                    "shipyard readiness probe failed",
+                    retryable=False,
+                    sandbox_ready=False,
+                )
+        async with self._semaphore:
+            return await self._execute(intent)

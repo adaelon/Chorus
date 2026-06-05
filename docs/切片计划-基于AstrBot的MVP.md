@@ -585,10 +585,11 @@
 - 判据：`pytest`/集成测试 — 重启后能从最后闭合点恢复；SSE 长流有心跳；审计日志能按 run_id/thread_id 查到节点起止、重试、降级。
 - 落地：新增 `app/execution_runtime.py`，执行子图 P1 设施独立于节点契约：`execution_checkpointer` 选用 durable `AsyncSqliteSaver`，`stream_with_heartbeat` 在事件源空闲时发 SSE heartbeat comment，`project_trace_events` / `filter_audit_rows` 把 state trace 投影成可按 thread/run/node/status 查询的审计行。`tests/service/test_execution_runtime.py` 覆盖 sqlite 重启后从已闭合 intent 续跑、心跳先于长流最终事件、审计查询含 degraded/retry；相关 S11 测试 **29 passed**。详见代码链路。
 
-**S11g P1 shipyard 探活 + 并发闸**
+**S11g P1 shipyard 探活 + 并发闸 ✅**
 - 做：接真实 shipyard readiness probe；`sandbox_ready` 由探活结果维护；加并发信号量/队列保护工具执行；探活失败走 S11d 的显式降级边。
 - 不做：让 orchestrator 托管 sandbox 全生命周期；把 readiness 判断散落到每个工具实现。
 - 判据：集成测试 — shipyard down 时不调用工具、直接降级；shipyard 恢复后下一轮可正常 dispatch；并发超过阈值时排队或返回结构化忙碌状态。
+- 落地：`app/execution_runtime.py` 新增 `http_readiness_probe` 与 `ToolExecutorGate`。真实 executor 通过 gate 包装：sandbox intent 执行前先探活，down 时抛 `ToolDispatchError(sandbox_ready=False)`，沿 S11c/S11d 写 state 并走降级边；ready 时进入 `asyncio.Semaphore` 并发闸，超阈值排队。`tests/service/test_execution_runtime.py` 覆盖 HTTP probe、down 不调用 executor、恢复后成功 dispatch、并发阈值串行化；相关测试 **27 passed**。详见代码链路。
 
 ---
 
