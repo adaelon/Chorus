@@ -573,10 +573,11 @@
 - 判据：`pytest` — 对状态表逐项断言路由；`loop_guard` 返回值不包含 state delta；sandbox down 能路由到降级回复或 human 节点。
 - 落地：新增 `app/nodes/loop_guard.py`，返回 `tool_dispatch` / `llm_plan` / `degraded_reply` / `human_intervention` / `done` 五类边标签；优先级为 abort/done → pending tool → sandbox down → tool error → tool results → output → llm_plan。`tests/nodes/test_loop_guard.py` 覆盖路由表、优先级和只读性；`.venv` 全量 **240 passed, 2 skipped**。
 
-**S11e P0 断网/取消/恢复验收场景**
+**S11e P0 断网/取消/恢复验收场景 ✅**
 - 做：用 MemorySaver/fake LLM/fake tool 跑最小自含 loop：happy path、chunk 未闭合崩溃恢复、intent 已闭合崩溃恢复、tool 断网降级、入口取消穿透五类场景。
 - 不做：真实网络依赖；性能压测；前端 UI。
 - 判据：`pytest` — 五类场景全绿；断网场景用户可见输出为“沙箱暂时不可用/等待人工处理”类降级结果；取消场景 `run_status=aborted` 且无悬挂 pending tool。
+- 落地：新增 `app/execution_loop.py` 组装最小子图 `llm_plan -> loop_guard -> tool_dispatch -> loop_guard`，含 P0 `degraded_reply` / `human_intervention` 占位终端；`tests/service/test_execution_loop.py` 覆盖 happy path、chunk 未闭合崩溃后 `ainvoke(None)` 重调 LLM、intent 闭合后 tool 崩溃恢复不重调 LLM 直接重跑 dispatch、sandbox down 降级、入口取消穿透；`.venv` 全量 **246 passed, 2 skipped**。
 
 **S11f P1 持久化与 StreamHealth 加固**
 - 做：把 P0 MemorySaver/fake heartbeat 替换为生产持久化选择（如 PostgresSaver 或现有 durable saver 的执行子图配置）+ StreamHealth 心跳事件；trace 从 state 同步到审计日志/事件流。

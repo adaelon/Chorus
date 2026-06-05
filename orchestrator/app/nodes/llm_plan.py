@@ -85,8 +85,14 @@ async def llm_plan(
     Recovery contract:
     - existing pending tool or output means the intent has already closed, so do
       not call LLM again;
+    - abort_requested means the run is already cancelled at entry, so do not
+      call LLM;
     - if streaming raises before returning, no delta is produced by this node.
     """
+    if state.abort_requested:
+        trace = list(state.trace_events)
+        trace.append(TraceEvent(node="llm_plan", status="aborted"))
+        return {"run_status": "aborted", "trace_events": trace}
     if state.pending_tools or state.output:
         return {}
     if stream is None:

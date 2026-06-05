@@ -67,6 +67,19 @@ async def test_llm_plan_does_not_return_delta_when_stream_crashes_before_close()
         await llm_plan(GroupState(group_key="g"), stream=_crashing_stream())
 
 
+async def test_llm_plan_abort_does_not_call_stream():
+    calls: list[int] = []
+
+    out = await llm_plan(
+        GroupState(group_key="g", abort_requested=True),
+        stream=_stream('{"kind":"final","text":"x"}', calls=calls),
+    )
+
+    assert calls == []
+    assert out["run_status"] == "aborted"
+    assert out["trace_events"][-1].status == "aborted"
+
+
 async def test_llm_plan_reinvokes_after_unclosed_crash_because_state_has_no_delta():
     calls: list[int] = []
     state = GroupState(group_key="g")
