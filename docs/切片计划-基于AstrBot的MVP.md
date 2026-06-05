@@ -567,10 +567,11 @@
 - 判据：`pytest` — fake tool 成功写完整 `tool_results`；fake sandbox down 写错误 state 且不抛出到服务层；abort_requested 时工具不启动或尽快停止；retry budget 耗尽后错误可见。
 - 落地：新增 `app/nodes/tool_dispatch.py`，P0 通过注入 `execute(intent)` fake executor 验证包装语义；一次只处理队首 intent，成功/失败/abort 都关闭该 intent 并写 `ToolResult`，sandbox down 写 `run_status=degraded`。`tests/nodes/test_tool_dispatch.py` 覆盖成功、sandbox down、abort 不启动 executor、retry 后成功、retry 耗尽失败；`.venv` 全量 **231 passed, 2 skipped**。
 
-**S11d P0 `loop_guard` 纯 router + 降级/人工边**
+**S11d P0 `loop_guard` 纯 router + 降级/人工边 ✅**
 - 做：`loop_guard` 只读 state，不写字段；路由由边表达：`pending_tools -> tool_dispatch`、`tool_results -> llm_plan`、`sandbox_ready=false -> degraded_reply|human_intervention`、`abort -> done`、`final -> done`。
 - 不做：在 router 内修 state；把 sandbox 错误吞在 `tool_dispatch` 内直接返回 final。
 - 判据：`pytest` — 对状态表逐项断言路由；`loop_guard` 返回值不包含 state delta；sandbox down 能路由到降级回复或 human 节点。
+- 落地：新增 `app/nodes/loop_guard.py`，返回 `tool_dispatch` / `llm_plan` / `degraded_reply` / `human_intervention` / `done` 五类边标签；优先级为 abort/done → pending tool → sandbox down → tool error → tool results → output → llm_plan。`tests/nodes/test_loop_guard.py` 覆盖路由表、优先级和只读性；`.venv` 全量 **240 passed, 2 skipped**。
 
 **S11e P0 断网/取消/恢复验收场景**
 - 做：用 MemorySaver/fake LLM/fake tool 跑最小自含 loop：happy path、chunk 未闭合崩溃恢复、intent 已闭合崩溃恢复、tool 断网降级、入口取消穿透五类场景。
