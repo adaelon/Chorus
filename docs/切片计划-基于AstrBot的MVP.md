@@ -555,15 +555,17 @@
 - 判据：`pytest` — state 可序列化进 checkpointer；默认值水化稳定；trace 事件包含 node/run/status/error 字段；旧会话 state 缺字段时能补默认。
 - 落地：`ToolCallIntent.kind` 支持 `mcp_call` / `sandbox_exec` / `sandbox_skill`；`skill_refs` 保留 AstrBot SkillManager/Shipyard Neo skill 执行空间。`tests/infra/test_state_contract.py` 覆盖默认值、trace 字段、嵌套模型 round-trip、checkpointer 序列化、recipe spec 字段可见；`.venv` 全量 **220 passed, 2 skipped**。
 
-**S11b P0 `llm_plan` 流式聚合 + 闭合落盘**
+**S11b P0 `llm_plan` 流式聚合 + 闭合落盘 ✅**
 - 做：`llm_plan` 节点内部消费 LLM chunks，聚合成完整 `AssistantIntent`；只有形成完整 `ToolCallIntent` 或 final message 后才写 `pending_tools`/`output` 和 trace；SSE 透传走 `astream_events`/现有事件层，不把半截 chunk 当 state 契约。
 - 不做：chunk 级 checkpoint；黑盒 hook；真实模型 smoke。
 - 判据：`pytest` — fake stream 在 tool intent 闭合前抛错，恢复后重新调用 LLM；intent 闭合后崩溃，恢复不重调 LLM，只进入 `tool_dispatch`；final message 闭合后直接结束。
+- 落地：新增 `app/nodes/llm_plan.py`，P0 用窄 JSON intent 协议锁闭合语义（`tool_call` / `final`），节点幂等：已有 `pending_tools` 或 `output` 时不再调用 stream。`tests/nodes/test_llm_plan.py` 覆盖 tool intent、final、未闭合崩溃不产 delta、未闭合恢复重调、已闭合恢复不重调；`.venv` 全量 **226 passed, 2 skipped**。
 
-**S11c P0 `tool_dispatch` 包装 + sandbox 降级入 state**
+**S11c P0 `tool_dispatch` 包装 + sandbox 降级入 state ✅**
 - 做：`tool_dispatch` 只消费已闭合 `pending_tools`；每个工具调用带 timeout/retry/cancellation 包装接口；sandbox/tool 不可达时写 `sandbox_ready=false`、`last_tool_error`、结构化 trace，必要时写错误型 `tool_results`，进程不 crash。
 - 不做：真实 shipyard 生命周期管理；真实 MCP server；复杂 retry 矩阵和并发池。
 - 判据：`pytest` — fake tool 成功写完整 `tool_results`；fake sandbox down 写错误 state 且不抛出到服务层；abort_requested 时工具不启动或尽快停止；retry budget 耗尽后错误可见。
+- 落地：新增 `app/nodes/tool_dispatch.py`，P0 通过注入 `execute(intent)` fake executor 验证包装语义；一次只处理队首 intent，成功/失败/abort 都关闭该 intent 并写 `ToolResult`，sandbox down 写 `run_status=degraded`。`tests/nodes/test_tool_dispatch.py` 覆盖成功、sandbox down、abort 不启动 executor、retry 后成功、retry 耗尽失败；`.venv` 全量 **231 passed, 2 skipped**。
 
 **S11d P0 `loop_guard` 纯 router + 降级/人工边**
 - 做：`loop_guard` 只读 state，不写字段；路由由边表达：`pending_tools -> tool_dispatch`、`tool_results -> llm_plan`、`sandbox_ready=false -> degraded_reply|human_intervention`、`abort -> done`、`final -> done`。
