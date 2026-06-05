@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from typing import Any, Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -42,6 +44,66 @@ class Claim(BaseModel):
     turn: int = 0  # 第几轮产生（排序/衰减用）
 
 
+class TraceEvent(BaseModel):
+    """执行子图的结构化审计事件（S11a）。"""
+
+    node: str
+    status: str
+    run_id: str | None = None
+    error: str | None = None
+    message: str | None = None
+    ts: float = 0.0
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+class RetryBudget(BaseModel):
+    """节点/工具重试预算的最小状态表示（S11a）。"""
+
+    max_attempts: int = 1
+    used_attempts: int = 0
+
+
+class SkillRef(BaseModel):
+    """一次工具意图依赖的 skill 资源。"""
+
+    name: str
+    version: str | None = None
+    entry: str = "SKILL.md"
+
+
+class ToolRuntimeError(BaseModel):
+    """工具运行时错误，写入 state 供 router 降级。"""
+
+    code: str
+    message: str
+    retryable: bool = False
+    detail: dict[str, Any] = Field(default_factory=dict)
+
+
+class ToolCallIntent(BaseModel):
+    """LLM 已闭合的原子工具意图（S11a）。"""
+
+    call_id: str
+    kind: Literal["mcp_call", "sandbox_exec", "sandbox_skill"]
+    tool_name: str
+    args: dict[str, Any] = Field(default_factory=dict)
+    skill_refs: list[SkillRef] = Field(default_factory=list)
+    requires_sandbox: bool = False
+    sandbox_profile: str | None = None
+    timeout_ms: int | None = None
+
+
+class ToolResult(BaseModel):
+    """已闭合工具结果；成功和失败都以结果入 state。"""
+
+    call_id: str
+    tool_name: str
+    ok: bool
+    content: str | None = None
+    data: dict[str, Any] = Field(default_factory=dict)
+    error: ToolRuntimeError | None = None
+
+
 class GroupState(BaseModel):
     """LangGraph 图的共享状态。配方(recipe)在其上演化。"""
 
@@ -62,3 +124,11 @@ class GroupState(BaseModel):
     stop_reason: str | None = None  # Stop 的原因（budget|moderator|plan_budget…）
     plan_steps: int = 0  # L3 auto 配方：主持人已组的原语步数（S5.2）
     max_plan_steps: int = 8  # auto 配方步数闸（防跑偏/死循环；每步=plan+原语 2 超步，留 LangGraph 递归余量）
+    trace_events: list[TraceEvent] = Field(default_factory=list)  # S11a 执行子图审计事件
+    run_status: Literal["running", "aborted", "failed", "degraded", "done"] = "running"
+    retry_budget: RetryBudget = Field(default_factory=RetryBudget)
+    abort_requested: bool = False
+    pending_tools: list[ToolCallIntent] = Field(default_factory=list)
+    tool_results: list[ToolResult] = Field(default_factory=list)
+    sandbox_ready: bool | None = None
+    last_tool_error: ToolRuntimeError | None = None

@@ -425,6 +425,19 @@ ChannelDriver(adapter)  # 统一接口 send(group_key,account_ref,text)；AstrBo
 **何时回头**：`produce` 仍常猜错形态 → 在 clarify/frame 早绑 deliverable 进 state；要"产物 + 附结论"双出时再加变体；L3 planner 词表加 `produce` 留后。
 **展开**：切片 **S10**（见切片计划）。
 
+### §6.22 子图执行契约
+
+**决策**：P0 锁契约，设施后补。
+
+**否决**：
+- P0 只验拓扑：取消、失败、恢复会反向改 state/schema。
+- P0 全上设施：会把最小 loop 变成基础设施项目。
+- sandbox 内部吞错：大脑层无法路由降级和人工干预。
+
+**命门**：checkpoint 只在意图/结果闭合；错误进 state 后由只读 router 分支。
+**何时回头**：断网恢复、取消穿透、sandbox 降级任一验收不稳。
+**展开**：切片 **S11**（子图执行契约 P0/P1），见切片计划。
+
 ---
 
 ## 7. MVP 落地顺序（每步独立可验）

@@ -545,6 +545,48 @@
 
 ---
 
+## S11 子图执行契约：P0 锁语义，P1 补设施（§6.22）
+
+> 目标不是在 P0 做完生产运维，而是先把失败、取消、恢复、降级的 state 语义锁住。P0 用 fake LLM/fake tool/fake sandbox 验证闭环；P1 再替换成 PostgresSaver、真实 shipyard 探活、StreamHealth、并发闸等设施。
+
+**S11a P0 状态契约 + trace/run control ✅**
+- 做：扩展执行子图 state schema：`trace_events`、`run_status`、`retry_budget`、`abort_requested`、`pending_tools`、`tool_results`、`sandbox_ready`、`last_tool_error`；定义 `TraceEvent` / `RetryBudget` / `SkillRef` / `ToolCallIntent` / `ToolResult` / `ToolRuntimeError` 的最小模型。
+- 不做：真实工具接入、真实 shipyard、PostgresSaver、前端展示。
+- 判据：`pytest` — state 可序列化进 checkpointer；默认值水化稳定；trace 事件包含 node/run/status/error 字段；旧会话 state 缺字段时能补默认。
+- 落地：`ToolCallIntent.kind` 支持 `mcp_call` / `sandbox_exec` / `sandbox_skill`；`skill_refs` 保留 AstrBot SkillManager/Shipyard Neo skill 执行空间。`tests/infra/test_state_contract.py` 覆盖默认值、trace 字段、嵌套模型 round-trip、checkpointer 序列化、recipe spec 字段可见；`.venv` 全量 **220 passed, 2 skipped**。
+
+**S11b P0 `llm_plan` 流式聚合 + 闭合落盘**
+- 做：`llm_plan` 节点内部消费 LLM chunks，聚合成完整 `AssistantIntent`；只有形成完整 `ToolCallIntent` 或 final message 后才写 `pending_tools`/`output` 和 trace；SSE 透传走 `astream_events`/现有事件层，不把半截 chunk 当 state 契约。
+- 不做：chunk 级 checkpoint；黑盒 hook；真实模型 smoke。
+- 判据：`pytest` — fake stream 在 tool intent 闭合前抛错，恢复后重新调用 LLM；intent 闭合后崩溃，恢复不重调 LLM，只进入 `tool_dispatch`；final message 闭合后直接结束。
+
+**S11c P0 `tool_dispatch` 包装 + sandbox 降级入 state**
+- 做：`tool_dispatch` 只消费已闭合 `pending_tools`；每个工具调用带 timeout/retry/cancellation 包装接口；sandbox/tool 不可达时写 `sandbox_ready=false`、`last_tool_error`、结构化 trace，必要时写错误型 `tool_results`，进程不 crash。
+- 不做：真实 shipyard 生命周期管理；真实 MCP server；复杂 retry 矩阵和并发池。
+- 判据：`pytest` — fake tool 成功写完整 `tool_results`；fake sandbox down 写错误 state 且不抛出到服务层；abort_requested 时工具不启动或尽快停止；retry budget 耗尽后错误可见。
+
+**S11d P0 `loop_guard` 纯 router + 降级/人工边**
+- 做：`loop_guard` 只读 state，不写字段；路由由边表达：`pending_tools -> tool_dispatch`、`tool_results -> llm_plan`、`sandbox_ready=false -> degraded_reply|human_intervention`、`abort -> done`、`final -> done`。
+- 不做：在 router 内修 state；把 sandbox 错误吞在 `tool_dispatch` 内直接返回 final。
+- 判据：`pytest` — 对状态表逐项断言路由；`loop_guard` 返回值不包含 state delta；sandbox down 能路由到降级回复或 human 节点。
+
+**S11e P0 断网/取消/恢复验收场景**
+- 做：用 MemorySaver/fake LLM/fake tool 跑最小自含 loop：happy path、chunk 未闭合崩溃恢复、intent 已闭合崩溃恢复、tool 断网降级、入口取消穿透五类场景。
+- 不做：真实网络依赖；性能压测；前端 UI。
+- 判据：`pytest` — 五类场景全绿；断网场景用户可见输出为“沙箱暂时不可用/等待人工处理”类降级结果；取消场景 `run_status=aborted` 且无悬挂 pending tool。
+
+**S11f P1 持久化与 StreamHealth 加固**
+- 做：把 P0 MemorySaver/fake heartbeat 替换为生产持久化选择（如 PostgresSaver 或现有 durable saver 的执行子图配置）+ StreamHealth 心跳事件；trace 从 state 同步到审计日志/事件流。
+- 不做：改变 S11a-e 的状态契约；改变 checkpoint 闭合语义。
+- 判据：`pytest`/集成测试 — 重启后能从最后闭合点恢复；SSE 长流有心跳；审计日志能按 run_id/thread_id 查到节点起止、重试、降级。
+
+**S11g P1 shipyard 探活 + 并发闸**
+- 做：接真实 shipyard readiness probe；`sandbox_ready` 由探活结果维护；加并发信号量/队列保护工具执行；探活失败走 S11d 的显式降级边。
+- 不做：让 orchestrator 托管 sandbox 全生命周期；把 readiness 判断散落到每个工具实现。
+- 判据：集成测试 — shipyard down 时不调用工具、直接降级；shipyard 恢复后下一轮可正常 dispatch；并发超过阈值时排队或返回结构化忙碌状态。
+
+---
+
 ## 依赖与执行顺序
 
 ```
@@ -561,6 +603,7 @@ S5(core 稳) ─→ S6.0(配置解耦+包骨架+CLI) → S6.1(打进前端 dist)
 S2.4(Contact+出站) ─→ S7.1(每好友独立 LLM: 注册表→ModelProvider→前端) ; S7.2(平台解耦: channel→router) 独立于 S7.1（§6.18，两维度并行可切）
 S7.1e + S4.3(bot_ref) ─→ S7.3(AstrBot 整 bot 绑定: channel+llm 合一，§6.18++「C」；桥按 umo 取 using-provider→跟随 bot→前端)
 S7.3 ─→ S7.4(AstrBot bot 作 LLM 后端，去 Contact.bot_ref，§6.18+++；kind=astrbot_bot→通道 provider 取 bot_id→前端去 bot_ref→可选导入)
+S5.8(checkpoint 重试) + §11(执行层前瞻) ─→ S11(P0 子图执行契约) ─→ S11 P1(持久化/心跳/shipyard 探活)
 ```
 
 **三个关键验收点**：
