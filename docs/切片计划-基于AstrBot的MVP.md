@@ -579,10 +579,11 @@
 - 判据：`pytest` — 五类场景全绿；断网场景用户可见输出为“沙箱暂时不可用/等待人工处理”类降级结果；取消场景 `run_status=aborted` 且无悬挂 pending tool。
 - 落地：新增 `app/execution_loop.py` 组装最小子图 `llm_plan -> loop_guard -> tool_dispatch -> loop_guard`，含 P0 `degraded_reply` / `human_intervention` 占位终端；`tests/service/test_execution_loop.py` 覆盖 happy path、chunk 未闭合崩溃后 `ainvoke(None)` 重调 LLM、intent 闭合后 tool 崩溃恢复不重调 LLM 直接重跑 dispatch、sandbox down 降级、入口取消穿透；`.venv` 全量 **246 passed, 2 skipped**。
 
-**S11f P1 持久化与 StreamHealth 加固**
+**S11f P1 持久化与 StreamHealth 加固 ✅**
 - 做：把 P0 MemorySaver/fake heartbeat 替换为生产持久化选择（如 PostgresSaver 或现有 durable saver 的执行子图配置）+ StreamHealth 心跳事件；trace 从 state 同步到审计日志/事件流。
 - 不做：改变 S11a-e 的状态契约；改变 checkpoint 闭合语义。
 - 判据：`pytest`/集成测试 — 重启后能从最后闭合点恢复；SSE 长流有心跳；审计日志能按 run_id/thread_id 查到节点起止、重试、降级。
+- 落地：新增 `app/execution_runtime.py`，执行子图 P1 设施独立于节点契约：`execution_checkpointer` 选用 durable `AsyncSqliteSaver`，`stream_with_heartbeat` 在事件源空闲时发 SSE heartbeat comment，`project_trace_events` / `filter_audit_rows` 把 state trace 投影成可按 thread/run/node/status 查询的审计行。`tests/service/test_execution_runtime.py` 覆盖 sqlite 重启后从已闭合 intent 续跑、心跳先于长流最终事件、审计查询含 degraded/retry；相关 S11 测试 **29 passed**。详见代码链路。
 
 **S11g P1 shipyard 探活 + 并发闸**
 - 做：接真实 shipyard readiness probe；`sandbox_ready` 由探活结果维护；加并发信号量/队列保护工具执行；探活失败走 S11d 的显式降级边。
