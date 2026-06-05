@@ -440,6 +440,21 @@ ChannelDriver(adapter)  # 统一接口 send(group_key,account_ref,text)；AstrBo
 
 ---
 
+### §6.23 沙箱执行后端选型
+
+**决策**：沙箱选 OpenSandbox，藏在可换的 `SandboxBackend` 协议后。
+
+**否决**：
+- E2B：云托管、按秒付费——破坏自托管、加边际成本。
+- Shipyard Neo 作默认：无 Python SDK 要反推、绑 AstrBot、隔离弱于 microVM（留作第二实现）。
+- 每次调用新建沙箱：丢失多步任务的文件状态（默认按 group_key 复用会话）。
+
+**命门**：协议中立，换后端=换工厂；OpenSandbox 才开源（2026-03），版本 pin 死。
+**何时回头**：OpenSandbox 弃维/churn，或需求要 Shipyard 的浏览器能力。
+**展开**：切片 **S12**（真实 executor adapter），见切片计划。
+
+---
+
 ## 7. MVP 落地顺序（每步独立可验）
 
 对应需求 §6 步骤 1-4，按"配方抽象"重排，**前端继承(§12)随产品域并入**。每片完成当场验证。
