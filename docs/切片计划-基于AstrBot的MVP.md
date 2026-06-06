@@ -603,10 +603,11 @@
 - 判据：`.venv` 离线 pytest——`sandbox_exec` 成功→`ToolResult.ok`；非零退出→`ToolDispatchError`；`sandbox_skill` 先 `write_files` 再 `run`；分发按 kind；`mcp_call` 占位 `NotImplemented`。**零外部依赖、纯安全**。
 - 落地：`app/execution_sandbox.py`——`ExecResult{stdout,stderr,exit_code}` + 两 Protocol + `make_sandbox_executor`（每调用 open→译→close，无复用；非零退出抛 `ToolDispatchError(sandbox_exec_failed)`）+ `make_real_executor(*,sandbox_backend,mcp_executor)`（kind 分发，mcp 无 executor→`NotImplementedError`，sandbox 无 backend→`ToolDispatchError(sandbox_unavailable,sandbox_ready=False)`）+ `FakeBackend`/`FakeSession`（记 events 序）。intent.args 约定：`sandbox_exec`→`command`；`sandbox_skill`→`files{path:content}`+`command`。`tests/service/test_execution_sandbox.py`（8 条）；`.venv` 全量 **262 passed, 2 skipped**。详见代码链路。
 
-**S12b OpenSandboxBackend（包 `opensandbox` pip SDK）🅿️**
+**S12b OpenSandboxBackend（包 `opensandbox` pip SDK）✅**
 - 做：实现 `SandboxBackend` over `opensandbox` SDK：`ConnectionConfig(domain, api_key)` 指向自托管 server；`Sandbox.create`→session；`commands.run`→`ExecResult`（`logs.stdout`/`exit_code`）；`files.write_files`/`read_file`；`kill` 生命周期。加 `opensandbox` 依赖。
 - 不做：会话复用（S12c）；MCP。
 - 判据：mock SDK 的离线单测恒绿；`CHORUS_RUN_SANDBOX_SMOKE=1` 时对本机 `opensandbox-server` smoke 通过。
+- 落地（对 **opensandbox 0.1.9 真实 API introspect 核实**）：`app/execution_opensandbox.py`——`OpenSandboxBackend`/`OpenSandboxSession` 实现 S12a 协议；真 SDK **惰性导入 + 可注入 factory/readiness_probe**（模块不装 opensandbox 也能 import、离线测注入异步 fake）。SDK **异步原生**（非同步，故 `await` 直调、无 to_thread）：`await Sandbox.create(connection_config=ConnectionConfig(domain,api_key))`、`await commands.run(cmd)→Execution`（`exit_code:int|None` + `logs.stdout/stderr:list[OutputMessage]` 各 `.text`，join 成串）、`await files.write_files([WriteEntry(path,data)])`、`await files.read_file`、`await kill()`、`sandbox.id`=session_id；`readiness`→注入 probe（默认 HTTP 探 domain）；`reconnect` 抛 NotImplementedError（SDK 有 `Sandbox.connect`/`pause`/`resume`，留 S12c）。pyproject 加 `[project.optional-dependencies] sandbox=["opensandbox>=0.1.9,<0.2"]`（可选、不进 base/S6）。`tests/service/test_execution_opensandbox.py`（8 离线异步 fake + 1 gated smoke，`importorskip`）+ 生产惰性导入路径/构造器对真 SDK 校验通过；`.venv` 全量 **270 passed, 3 skipped**。详见代码链路。
 
 **S12c 会话复用 + readiness 接 gate 🅿️**
 - 做：`SessionStore` 按 `group_key` 复用沙箱（`pause`/`Sandbox.resume`/`renew`）；run 结束/abort 时 `close`；`backend.readiness` 接进 `ToolExecutorGate`（替换占位 `http_readiness_probe`）。
