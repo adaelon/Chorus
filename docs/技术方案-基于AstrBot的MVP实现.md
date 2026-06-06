@@ -455,6 +455,21 @@ ChannelDriver(adapter)  # 统一接口 send(group_key,account_ref,text)；AstrBo
 
 ---
 
+### §6.24 执行层织入圆桌 turn（工具化发言）
+
+**决策**：执行 loop 织入 turn——先 ReAct 用工具、再走现有流式人设发言；门控（未配 sandbox=纯发言）。
+
+**否决**：
+- α（planner `final` 的 text 直接当发言）：破坏逐 token 流式 + 绕过人设/点账本。
+- 独立 ExecutionPage/任务跑器当产品主入口：与圆桌割裂；用户要"点进 AI 看它的手"。
+- 每 turn 强制走 loop 不门控：改既有行为、单机 pip 路径被迫依赖 sandbox。
+
+**命门**：β——`final`=「停止用工具」信号而非答案；发言仍由现有流式 `generate`（带 tool_results context）产出 → §6.11 SSE/人设/claims 全保。门控让现有测试零改、单机路径不变。trace 按 (group_key, speaker, turn) 归属，圆桌 SSE 增执行子事件、UI 抽屉看。
+**何时回头**：planner 每 turn 一调对纯聊型 AI 的延迟/成本（reasoning 模型慢）过重 → 加"需要工具吗"廉价 gate 或快模型跑 plan。
+**展开**：切片 **S13**（见切片计划）。
+
+---
+
 ## 7. MVP 落地顺序（每步独立可验）
 
 对应需求 §6 步骤 1-4，按"配方抽象"重排，**前端继承(§12)随产品域并入**。每片完成当场验证。
