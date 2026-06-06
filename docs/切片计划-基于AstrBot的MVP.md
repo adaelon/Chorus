@@ -597,10 +597,11 @@
 
 > 目标：把 S11 锁好的执行契约接上真后端。沙箱选 **OpenSandbox**（自托管、免费、有 Python SDK、microVM 隔离），藏在中立 `SandboxBackend` 协议后（Shipyard Neo 留作第二实现，换后端=换工厂）。三类 `intent.kind`（`sandbox_exec`/`sandbox_skill`/`mcp_call`）收束在 `tool_dispatch` 注入的 `execute` 分发层，**不新增原语**。`execute` 仍是现有 `ToolExecutor = (ToolCallIntent)->ToolResult`、仍经 `ToolExecutorGate` 包；失败抛 `ToolDispatchError`，复用 S11c/S11d 的降级/人工边——loop 零改。
 
-**S12a 协议 + 中立翻译层 + 分发器 + FakeBackend 🅿️**
+**S12a 协议 + 中立翻译层 + 分发器 + FakeBackend ✅**
 - 做：定义 `SandboxBackend`/`SandboxSession` 协议（`open`/`reconnect`/`readiness`；`run`/`write_files`/`read_file`/`close`）；`make_sandbox_executor`（intent→session 翻译，所有后端共享）；`make_real_executor`（按 `intent.kind` 分发）；`FakeBackend` 供离线测。
 - 不做：真实 OpenSandbox SDK；MCP 真实接入；会话复用策略（S12c）。
 - 判据：`.venv` 离线 pytest——`sandbox_exec` 成功→`ToolResult.ok`；非零退出→`ToolDispatchError`；`sandbox_skill` 先 `write_files` 再 `run`；分发按 kind；`mcp_call` 占位 `NotImplemented`。**零外部依赖、纯安全**。
+- 落地：`app/execution_sandbox.py`——`ExecResult{stdout,stderr,exit_code}` + 两 Protocol + `make_sandbox_executor`（每调用 open→译→close，无复用；非零退出抛 `ToolDispatchError(sandbox_exec_failed)`）+ `make_real_executor(*,sandbox_backend,mcp_executor)`（kind 分发，mcp 无 executor→`NotImplementedError`，sandbox 无 backend→`ToolDispatchError(sandbox_unavailable,sandbox_ready=False)`）+ `FakeBackend`/`FakeSession`（记 events 序）。intent.args 约定：`sandbox_exec`→`command`；`sandbox_skill`→`files{path:content}`+`command`。`tests/service/test_execution_sandbox.py`（8 条）；`.venv` 全量 **262 passed, 2 skipped**。详见代码链路。
 
 **S12b OpenSandboxBackend（包 `opensandbox` pip SDK）🅿️**
 - 做：实现 `SandboxBackend` over `opensandbox` SDK：`ConnectionConfig(domain, api_key)` 指向自托管 server；`Sandbox.create`→session；`commands.run`→`ExecResult`（`logs.stdout`/`exit_code`）；`files.write_files`/`read_file`；`kill` 生命周期。加 `opensandbox` 依赖。
