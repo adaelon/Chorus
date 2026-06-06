@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 
+from ..run_ctx import current_group_key
 from ..state import (
     GroupState,
     RetryBudget,
@@ -92,6 +93,10 @@ async def tool_dispatch(
 
     if execute is None:
         raise RuntimeError("tool_dispatch requires an injected executor in S11c P0")
+
+    # S12c: expose the run's group_key to the executor so a SessionStore can
+    # reuse one sandbox session per run (same pattern as turn/fanout, S7.3b).
+    current_group_key.set(state.group_key)
 
     budget = state.retry_budget
     used_attempts = budget.used_attempts
