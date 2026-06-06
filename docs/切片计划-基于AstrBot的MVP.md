@@ -643,10 +643,11 @@
 - 判据：离线假 model 吐预设 JSON 序列→ReAct 跑通（tool_call→fake tool_dispatch→见 result→done）；提取容忍 reasoning 噪声/围栏；真 model smoke 吐合法 JSON（gated）。
 - 落地：`state.py` 加 `AgentStep{tool_name,args,ok,content,error}`（args 保留 command，tool_results 不存）+ `GroupState.agent_steps`；`tool_dispatch` 关 tool（成功/失败两路）追加 `agent_steps`（planner 下轮可见自己跑了啥）；`llm_plan._parse_payload` 改 `_extract_json_obj`（§6.9，去裸 json.loads）；新 `nodes/plan_stream.py`——`_PLAN_SYSTEM`(严格窄 JSON 协议 + sandbox_exec 说明) + `_render_scratchpad`(历次 command+输出) + `_build_plan_messages` + `default_plan_stream(model)`(经 `robust_ainvoke` astream+retry，§6.9/kimi 可靠)。`tests/nodes/test_plan_stream.py`（6 离线 + 1 gated smoke：prompt 含协议/任务、scratchpad 渲染、解析容忍 reasoning+围栏、plan_stream 出 JSON、**ReAct 往返 tool_call→dispatch→agent_steps→final**）；`.venv` 全量 **297 passed, 5 skipped**（A3 既有零改，含 S11/S12）。`final` 暂带 text（standalone loop 用）；β 重解释（final=停工具信号、发言走流式 generate）在 S13b。
 
-**S13b turn 织入 loop（β + 门控，A3）**
+**S13b turn 织入 loop（β + 门控，A3）✅**
 - 做：`turn` 节点在 execution 启用时跑 plan⇄tool_dispatch（ReAct 工具阶段）→ planner `done` → 触发**现有流式 `generate`**（人设+context+tool_results）出发言 → claims/history/schedule 全不动。未配 execution→`turn` 走今天纯发言路径（门控）。trace_events 这轮归 (speaker, turn)。
-- 不做：trace 存储/SSE 子事件（S13c）；server 通电（S13d）；前端（S13e）。
+- 不做：recipe/service 真值 wire（S13d）；trace 存储/SSE 子事件（S13c）；server 通电（S13d）；前端（S13e）。
 - 判据：`pytest`——配 fake execution（假 planner+FakeBackend）：tool 化 turn 跑工具→发言含 tool 结果上下文、claims 照常；**未配 execution：turn 行为与今天逐字节一致（现有 roundtable 测零改全绿，A3）**。
+- 落地：`turn` 加 `plan_stream`/`execute`/`max_tool_steps` 参 + `_run_tool_phase`（在隔离 sub-GroupState 上 plan⇄tool_dispatch，**同 group_key→SessionStore 复用沙箱**；到 planner `final`/无 pending_tools/降级 停；**β：弃 final.text**，只收 `agent_steps`）+ `_tool_context`（工具发现拼成发言 context，框"据此自然发言别罗列命令"，复用 `_render_scratchpad`）→ 拼进 `request` 喂**现有 `generate`**（流式/人设/claims 全不动）。门控：`plan_stream`/`execute` 任一 None→跳过工具阶段=今天纯发言。turn return 形状不变（history/turns/claims）。`tests/nodes/test_turn_execution.py`（3：工具化 turn 把结果喂进发言 prompt+claims 照常 / planner 不用工具→request 不增 / **未注入=今天逐字节一致**）；`.venv` 全量 **300 passed, 5 skipped**（A3 既有 roundtable/turn 零改）。**S13b 只动 turn 节点**；recipe_deps 串 plan_stream/execute + create_app 真值 = S13d。trace 仅在工具阶段算、本刀未持久化（S13c 按 (speaker,turn) 存+SSE）。
 
 **S13c trace 归属存储 + 圆桌 SSE 执行子事件**
 - 做：执行 trace 按 (group_key, speaker, turn) 存（checkpointer/轻表）+ 检索；圆桌 `runtime.to_event`/SSE 增中性执行子事件（`tool_status`/`tool_call`/`tool_result`，带 speaker/turn 归属），不破现有 framed/delta/turn 事件。
