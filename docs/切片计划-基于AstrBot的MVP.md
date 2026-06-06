@@ -622,10 +622,11 @@
 - 待定：MCP server 配置 = 写死配置文件 vs 可 CRUD 注册表（倾向注册表，多一张表+前端页，单列一刀，不挡 S12a-c）。
 - 落地（对 **mcp 1.27.2 真实 API introspect 核实**）：`app/execution_mcp.py`——`make_mcp_executor(open_session)`：`async with open_session() as session`→`await session.call_tool(intent.tool_name, intent.args or None)`→`CallToolResult`→`ToolResult`（`content` 取 `TextContent.text` join、`structuredContent` 进 data；`isError=True`→ok=False+`mcp_tool_error`（作结果给 LLM 看、非 infra 失败）；连接/协议异常包成 `ToolDispatchError(mcp_call_failed)` 不 crash loop）。真实连接 provider `stdio_mcp_session(command,args,env)`/`sse_mcp_session(url,headers)`（惰性导入、async-cm：`stdio_client`/`sse_client`→`ClientSession`→`initialize`→yield）。**接入点 = S12a 已留的 `make_real_executor(mcp_executor=)`，未改它**。pyproject 加 `[project.optional-dependencies] mcp=["mcp>=1.27,<2"]`。`tests/service/test_execution_mcp.py`（6 离线 mock session + 1 gated smoke，`importorskip`）+ 生产惰性导入路径校验通过；`.venv` 全量 **286 passed, 4 skipped**（A3 既有零改）。MCP server 注册表/配置=独立刀（待定，不含本刀）。
 
-**S12e wire 进 service 🅿️**
+**S12e wire 进 service ✅**
 - 做：`/execution/run` 端点 = `build_execution_loop(execution_checkpointer, stream, execute=ToolExecutorGate(make_real_executor(...)))` + `stream_with_heartbeat` SSE。
 - 不做：前端 UI。
 - 判据：TestClient 用 `FakeBackend` 跑 e2e；SSE 出 trace/心跳/output；降级/取消可观测。
+- 落地：`service.py`——`create_app` 加注入参（`execution_stream`/`sandbox_backend`/`mcp_session_provider`/`execution_readiness_probe`/`execution_checkpointer`/`execution_db_path`）；lifespan 改 `AsyncExitStack`（A3 等价，saver 生命周期不变）+ `_build_execution`：配了 stream 才挂——`SessionStore(sandbox_backend)` + `ToolExecutorGate(make_real_executor(sandbox_store=…, mcp_executor=…), readiness_probe=backend.readiness)` + `build_execution_loop(exec_saver, stream, gate)` → `app.state.execution_graph`/`execution_session_store`；`POST /execution/run {group_key,request,abort}`：`astream(updates)`→`_execution_event_dicts`（增量 trace + run_status 变化【降级/取消可观测】+ 终态 output + done）经 `stream_with_heartbeat` SSE，run 末 `finally store.release(group_key)` 关沙箱（S12c）；未配 stream→503。`server.py` 暂不接（无真 planner-stream，留 503）。`tests/service/test_execution_service.py`（5：happy trace+output / sandbox down→degraded / 入口 abort→aborted / run 末释放 session / 未配 503）；`.venv` 全量 **291 passed, 4 skipped**（A3 既有零改，含 lifespan 重构后全端点）。**S12 全部完成**——S12a 协议→S12b OpenSandbox→S12c 复用+readiness→S12d MCP→S12e service wire；真 executor 接上 S11 执行契约（§6.22/§6.23）。
 
 ---
 

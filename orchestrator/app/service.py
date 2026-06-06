@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from typing import Annotated, Union
 from uuid import uuid4
 
@@ -39,6 +39,10 @@ from .db.repo import (
     seed_builtin_recipes,
     upsert_conversation,
 )
+from .execution_loop import build_execution_loop
+from .execution_mcp import McpSessionProvider, make_mcp_executor
+from .execution_runtime import ToolExecutorGate, execution_sse, stream_with_heartbeat
+from .execution_sandbox import SandboxBackend, SessionStore, make_real_executor
 from .nodes.clarify import ClarifyFn
 from .nodes.curate import Eliminate, Pick, Reassign, ReputationAdjuster
 from .nodes.extract import ClaimExtractor
@@ -46,6 +50,7 @@ from .nodes.frame import AssignFn
 from .llm import ping_model, probe_models
 from .llm_astrbot import fetch_astrbot_bots, make_model_from_backend
 from .nodes.generate import GenerateFn, ModelProvider, PersonaProvider
+from .nodes.llm_plan import PlanStream
 from .nodes.plan import PlanFn
 from .nodes.schedule import PickFn
 from .nodes.synthesize import ComposeFn
@@ -200,6 +205,14 @@ class RecipeAutoReq(BaseModel):
     roster: list[str] = []
 
 
+class ExecutionRunReq(BaseModel):
+    """跑执行子图（S12e，§6.22/§6.23）：llm_plan→tool_dispatch ReAct loop，真 executor。"""
+
+    group_key: str
+    request: str = ""  # 开场任务（作为 human 消息进 history，供 planner 读）
+    abort: bool = False  # 入口取消（S11e）：abort_requested=True → run_status=aborted
+
+
 def _cfg(group_key: str) -> dict:
     return {"configurable": {"thread_id": group_key}}
 
@@ -339,6 +352,58 @@ def _sse_from_events(
     )
 
 
+def _trace_event_dict(ev) -> dict:
+    """TraceEvent（或反序列化后的 dict）→ SSE trace 事件。"""
+    if isinstance(ev, dict):
+        get = ev.get
+    else:
+        get = lambda k: getattr(ev, k, None)  # noqa: E731
+    return {
+        "type": "trace",
+        "node": get("node"),
+        "status": get("status"),
+        "error": get("error"),
+        "message": get("message"),
+    }
+
+
+async def _execution_event_dicts(graph, state_in: dict, cfg: dict):
+    """执行子图 astream(updates) → 中性事件 dict 流（S12e）。
+
+    增量发 trace（trace_events 每节点返回全量列表，按已发数切片）+ run_status 变化
+    （降级/取消可观测）+ 终态 output；异常进 error 事件而非 crash。
+    """
+    emitted = 0
+    final_output = None
+    final_status = None
+    try:
+        async for chunk in graph.astream(state_in, cfg, stream_mode="updates"):
+            for delta in chunk.values():
+                if not isinstance(delta, dict):
+                    continue
+                trace = delta.get("trace_events")
+                if trace:
+                    for ev in trace[emitted:]:
+                        yield _trace_event_dict(ev)
+                    emitted = len(trace)
+                status = delta.get("run_status")
+                if status:
+                    final_status = status
+                    yield {"type": "status", "run_status": status}
+                if delta.get("output") is not None:
+                    final_output = delta["output"]
+    except Exception as e:  # noqa: BLE001
+        yield {"type": "error", "detail": str(e)}
+    if final_output is not None:
+        yield {"type": "output", "output": final_output}
+    yield {"type": "done", "run_status": final_status}
+
+
+async def _execution_frames(graph, state_in: dict, cfg: dict):
+    async for d in _execution_event_dicts(graph, state_in, cfg):
+        yield execution_sse(d)
+
+
 async def _require_thread(graph, group_key: str) -> None:
     """resume 前置校验：线程须已有 checkpoint（即先 /inbound 过）。"""
     snap = await graph.aget_state(_cfg(group_key))
@@ -392,9 +457,15 @@ def create_app(
     compose_produce: ComposeFn | None = None,  # S10a 出产物主笔（§6.21）；None=离线兜底
     recipe_selector: RecipeSelector | None = None,
     recipe_planner: RecipePlanner | None = None,
+    execution_stream: PlanStream | None = None,  # S12e：执行子图 planner LLM 流（窄 JSON intent）
+    sandbox_backend: SandboxBackend | None = None,  # S12b/c：真沙箱后端（None→无沙箱执行）
+    mcp_session_provider: McpSessionProvider | None = None,  # S12d：MCP 连接 provider
+    execution_readiness_probe=None,  # 覆盖默认 sandbox_backend.readiness
+    execution_checkpointer=None,  # S11f：执行子图 durable saver（None→开 execution_db_path）
     bridge_url: str = "http://127.0.0.1:9876",
     db_path: str = "group_checkpoints.sqlite",
     registry_db_path: str = "chorus_registry.sqlite",
+    execution_db_path: str = "execution_checkpoints.sqlite",
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -469,14 +540,49 @@ def create_app(
                 "assess": clarify_assess,
             }
 
-        try:
-            if checkpointer is not None:
-                _build_graphs(checkpointer)
-                yield
+        async def _build_execution(stack: AsyncExitStack) -> None:
+            # S12e：仅当配了 planner 流时挂执行子图（单机/纯产品路径可不带）。
+            if execution_stream is None:
+                app.state.execution_graph = None
+                app.state.execution_session_store = None
+                return
+            store = SessionStore(sandbox_backend) if sandbox_backend is not None else None
+            mcp_exec = (
+                make_mcp_executor(mcp_session_provider)
+                if mcp_session_provider is not None
+                else None
+            )
+            inner = make_real_executor(
+                sandbox_backend=sandbox_backend,
+                sandbox_store=store,  # 有 store 则复用（S12c），优先于 per-call
+                mcp_executor=mcp_exec,
+            )
+            probe = execution_readiness_probe
+            if probe is None and sandbox_backend is not None:
+                probe = sandbox_backend.readiness  # readiness 接 gate（S12c）→ down 走 S11d 降级边
+            gate = ToolExecutorGate(inner, readiness_probe=probe)
+            if execution_checkpointer is not None:
+                exsaver = execution_checkpointer
             else:
-                async with AsyncSqliteSaver.from_conn_string(db_path) as saver:
-                    _build_graphs(saver)
-                    yield
+                exsaver = await stack.enter_async_context(
+                    AsyncSqliteSaver.from_conn_string(execution_db_path)
+                )
+            app.state.execution_graph = build_execution_loop(
+                exsaver, stream=execution_stream, execute=gate
+            )
+            app.state.execution_session_store = store
+
+        try:
+            async with AsyncExitStack() as stack:
+                if checkpointer is not None:
+                    saver = checkpointer
+                else:
+                    saver = await stack.enter_async_context(
+                        AsyncSqliteSaver.from_conn_string(db_path)
+                    )
+                _build_graphs(saver)
+                await _build_execution(stack)
+                yield
         finally:
             await registry_engine.dispose()
 
@@ -558,6 +664,38 @@ def create_app(
             _cfg(req.group_key),
             start_status=_RT_START_STATUS,
             follow=_RT_FOLLOW_STATUS,
+        )
+
+    @app.post("/execution/run")
+    async def execution_run(req: ExecutionRunReq, request: Request):
+        """跑执行子图（S12e，§6.22/§6.23）：llm_plan→tool_dispatch ReAct loop，真 executor。
+
+        SSE 出 trace（节点起止/降级）+ run_status（降级/取消可观测）+ output + 心跳。
+        run 末/abort 释放该 group_key 的沙箱 session（S12c）。未配 execution_stream → 503。
+        """
+        graph = request.app.state.execution_graph
+        if graph is None:
+            raise HTTPException(status_code=503, detail="execution loop not configured")
+        store = request.app.state.execution_session_store
+        state_in: dict = {"group_key": req.group_key, "abort_requested": req.abort}
+        if req.request:
+            state_in["history"] = [
+                Msg(sender_id="user", sender_kind="human", text=req.request)
+            ]
+        cfg = _cfg(req.group_key)
+
+        async def gen():
+            try:
+                async for frame in stream_with_heartbeat(_execution_frames(graph, state_in, cfg)):
+                    yield frame
+            finally:
+                if store is not None:  # 关该 run 的沙箱 session（S12c）
+                    await store.release(req.group_key)
+
+        return StreamingResponse(
+            gen(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
     @app.post("/inbound")
