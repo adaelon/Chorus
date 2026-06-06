@@ -637,10 +637,11 @@
 
 **决策见 §6.24**。两个已定取舍：① **全员可用**（每 turn 都走 loop，planner 决定要不要工具；简单发言=planner 直出 done、零工具）；② **β**（planner `final`/`done`=「停止用工具」信号，发言由现有流式 `generate`+tool_results 产出，**非** JSON 裹答案——保 §6.11 逐 token 流式/人设/claims）；③ **实时流 + 点开抽屉**（圆桌 SSE 增执行子事件，气泡内显"正在写代码…"进度，drill-in 看完整 trace）；④ planner scratchpad 记历次 (intent,result)（选 A）。
 
-**S13a 真 plan stream（引擎，sandbox-only）**
+**S13a 真 plan stream（引擎，sandbox-only）✅**
 - 做：`default_plan_stream(model)→PlanStream`——`_build_plan_messages(state)`(system: agent 角色+严格 JSON 协议+sandbox_exec 工具说明; user: 任务; scratchpad: 历次 tool_call→tool_result) → `model.astream` 逐 token 吐窄 JSON。`llm_plan._parse_payload` 裸 `json.loads`→复用 `structured._extract_json_obj`（容忍 reasoning 前缀/```json 围栏，§6.9）。`GroupState` 加 `agent_steps`（scratchpad，选 A）。
 - 不做：MCP 工具（catalog 仅 sandbox_exec，S13f）；turn 织入（S13b）；前端。
 - 判据：离线假 model 吐预设 JSON 序列→ReAct 跑通（tool_call→fake tool_dispatch→见 result→done）；提取容忍 reasoning 噪声/围栏；真 model smoke 吐合法 JSON（gated）。
+- 落地：`state.py` 加 `AgentStep{tool_name,args,ok,content,error}`（args 保留 command，tool_results 不存）+ `GroupState.agent_steps`；`tool_dispatch` 关 tool（成功/失败两路）追加 `agent_steps`（planner 下轮可见自己跑了啥）；`llm_plan._parse_payload` 改 `_extract_json_obj`（§6.9，去裸 json.loads）；新 `nodes/plan_stream.py`——`_PLAN_SYSTEM`(严格窄 JSON 协议 + sandbox_exec 说明) + `_render_scratchpad`(历次 command+输出) + `_build_plan_messages` + `default_plan_stream(model)`(经 `robust_ainvoke` astream+retry，§6.9/kimi 可靠)。`tests/nodes/test_plan_stream.py`（6 离线 + 1 gated smoke：prompt 含协议/任务、scratchpad 渲染、解析容忍 reasoning+围栏、plan_stream 出 JSON、**ReAct 往返 tool_call→dispatch→agent_steps→final**）；`.venv` 全量 **297 passed, 5 skipped**（A3 既有零改，含 S11/S12）。`final` 暂带 text（standalone loop 用）；β 重解释（final=停工具信号、发言走流式 generate）在 S13b。
 
 **S13b turn 织入 loop（β + 门控，A3）**
 - 做：`turn` 节点在 execution 启用时跑 plan⇄tool_dispatch（ReAct 工具阶段）→ planner `done` → 触发**现有流式 `generate`**（人设+context+tool_results）出发言 → claims/history/schedule 全不动。未配 execution→`turn` 走今天纯发言路径（门控）。trace_events 这轮归 (speaker, turn)。

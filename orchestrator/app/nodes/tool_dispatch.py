@@ -10,6 +10,7 @@ from collections.abc import Awaitable, Callable
 
 from ..run_ctx import current_group_key
 from ..state import (
+    AgentStep,
     GroupState,
     RetryBudget,
     ToolCallIntent,
@@ -67,6 +68,20 @@ def _result_from_error(intent: ToolCallIntent, error: ToolRuntimeError) -> ToolR
     )
 
 
+def _agent_step(state: GroupState, intent: ToolCallIntent, result: ToolResult) -> list[AgentStep]:
+    """记一步进 scratchpad（S13a，§6.24）：planner 下轮据此知道'我跑了啥、得到啥'。"""
+    return [
+        *state.agent_steps,
+        AgentStep(
+            tool_name=intent.tool_name,
+            args=dict(intent.args),
+            ok=result.ok,
+            content=result.content,
+            error=result.error.code if result.error else None,
+        ),
+    ]
+
+
 def _close_intent(state: GroupState) -> list[ToolCallIntent]:
     return list(state.pending_tools[1:])
 
@@ -110,6 +125,7 @@ async def tool_dispatch(
             return {
                 "pending_tools": _close_intent(state),
                 "tool_results": [*state.tool_results, result],
+                "agent_steps": _agent_step(state, intent, result),
                 "retry_budget": RetryBudget(
                     max_attempts=budget.max_attempts,
                     used_attempts=used_attempts,
@@ -139,6 +155,7 @@ async def tool_dispatch(
     return {
         "pending_tools": _close_intent(state),
         "tool_results": [*state.tool_results, result],
+        "agent_steps": _agent_step(state, intent, result),
         "retry_budget": RetryBudget(max_attempts=budget.max_attempts, used_attempts=used_attempts),
         "sandbox_ready": sandbox_ready,
         "last_tool_error": err,

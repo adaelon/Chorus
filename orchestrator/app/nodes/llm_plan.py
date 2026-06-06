@@ -7,13 +7,13 @@ stream format.
 
 from __future__ import annotations
 
-import json
 from collections.abc import AsyncIterable, Callable
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
 from ..state import GroupState, SkillRef, ToolCallIntent, TraceEvent
+from ..structured import _extract_json_obj
 from ._common import request_text
 
 PlanStream = Callable[[GroupState], AsyncIterable[str]]
@@ -44,10 +44,12 @@ async def _collect_stream(stream: AsyncIterable[str]) -> str:
 
 
 def _parse_payload(text: str) -> _ToolIntentPayload | _FinalPayload:
+    # 复用 §6.9 的鲁棒提取：reasoning 模型（kimi/deepseek）会先吐思考再吐 JSON，
+    # 或加 ```json 围栏——抽最外层 {} 再 loads，而非裸 json.loads 整段。
     try:
-        raw = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"llm_plan returned invalid JSON: {exc.msg}") from exc
+        raw = _extract_json_obj(text)
+    except ValueError as exc:  # 无 JSON / 不可解析（JSONDecodeError 也是 ValueError）
+        raise ValueError(f"llm_plan returned invalid JSON: {exc}") from exc
     if not isinstance(raw, dict):
         raise ValueError("llm_plan payload must be a JSON object")
 

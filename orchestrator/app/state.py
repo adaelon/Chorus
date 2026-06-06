@@ -104,6 +104,16 @@ class ToolResult(BaseModel):
     error: ToolRuntimeError | None = None
 
 
+class AgentStep(BaseModel):
+    """一个已完成的 ReAct 步（工具调用+结果），供 planner scratchpad 重建上下文（S13a，§6.24）。"""
+
+    tool_name: str
+    args: dict[str, Any] = Field(default_factory=dict)  # 关键：保留 command（tool_results 不存）
+    ok: bool = True
+    content: str | None = None
+    error: str | None = None
+
+
 class GroupState(BaseModel):
     """LangGraph 图的共享状态。配方(recipe)在其上演化。"""
 
@@ -130,5 +140,6 @@ class GroupState(BaseModel):
     abort_requested: bool = False
     pending_tools: list[ToolCallIntent] = Field(default_factory=list)
     tool_results: list[ToolResult] = Field(default_factory=list)
+    agent_steps: list[AgentStep] = Field(default_factory=list)  # S13a planner scratchpad（§6.24）
     sandbox_ready: bool | None = None
     last_tool_error: ToolRuntimeError | None = None
