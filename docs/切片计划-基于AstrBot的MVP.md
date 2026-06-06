@@ -609,16 +609,18 @@
 - 判据：mock SDK 的离线单测恒绿；`CHORUS_RUN_SANDBOX_SMOKE=1` 时对本机 `opensandbox-server` smoke 通过。
 - 落地（对 **opensandbox 0.1.9 真实 API introspect 核实**）：`app/execution_opensandbox.py`——`OpenSandboxBackend`/`OpenSandboxSession` 实现 S12a 协议；真 SDK **惰性导入 + 可注入 factory/readiness_probe**（模块不装 opensandbox 也能 import、离线测注入异步 fake）。SDK **异步原生**（非同步，故 `await` 直调、无 to_thread）：`await Sandbox.create(connection_config=ConnectionConfig(domain,api_key))`、`await commands.run(cmd)→Execution`（`exit_code:int|None` + `logs.stdout/stderr:list[OutputMessage]` 各 `.text`，join 成串）、`await files.write_files([WriteEntry(path,data)])`、`await files.read_file`、`await kill()`、`sandbox.id`=session_id；`readiness`→注入 probe（默认 HTTP 探 domain）；`reconnect` 抛 NotImplementedError（SDK 有 `Sandbox.connect`/`pause`/`resume`，留 S12c）。pyproject 加 `[project.optional-dependencies] sandbox=["opensandbox>=0.1.9,<0.2"]`（可选、不进 base/S6）。`tests/service/test_execution_opensandbox.py`（8 离线异步 fake + 1 gated smoke，`importorskip`）+ 生产惰性导入路径/构造器对真 SDK 校验通过；`.venv` 全量 **270 passed, 3 skipped**。详见代码链路。
 
-**S12c 会话复用 + readiness 接 gate 🅿️**
+**S12c 会话复用 + readiness 接 gate ✅**
 - 做：`SessionStore` 按 `group_key` 复用沙箱（`pause`/`Sandbox.resume`/`renew`）；run 结束/abort 时 `close`；`backend.readiness` 接进 `ToolExecutorGate`（替换占位 `http_readiness_probe`）。
 - 不做：跨 run 持久沙箱；MCP。
 - 判据：同一 run 两次调用命中同一 session id；readiness down → 走 S11d 降级边。
+- 落地：`execution_sandbox.py` 抽 `_run_intent(session,intent)` 共享翻译（`make_sandbox_executor` 复用，A3 不变）+ `SessionStore{acquire/release/release_all}`（按 group_key 持 live session、`open(group_key=)` 一次、`release` 关闭、`asyncio.Lock` 防并发重开）+ `make_pooled_sandbox_executor(store)`（读 `run_ctx.current_group_key` 取 key、acquire 复用、**不每调用 close**）+ `make_real_executor` 加 `sandbox_store` 分支（优先 store、否则 per-call backend）。group_key 经 **`tool_dispatch` 注入 `current_group_key.set(state.group_key)`**（仿 S7.3b turn/fanout，pooled executor 据此键控 store）。readiness：`ToolExecutorGate(readiness_probe=backend.readiness)` 现成支持，down→`ToolDispatchError(sandbox_unavailable,sandbox_ready=False)`→S11c degraded→S11d 降级边。pause/resume/renew TTL/idle 优化留后（SDK 有，复用未依赖它）。`tests/service/test_session_store.py`（10）；`.venv` 全量 **280 passed, 3 skipped**（A3 既有零改，含 S12a/S11c）。详见代码链路。
 
-**S12d MCP adapter（`mcp_call` 分支）🅿️**
+**S12d MCP adapter（`mcp_call` 分支）✅**
 - 做：用官方 `mcp` SDK（stdio/SSE client）实现 `mcp_call`；`intent.tool_name`/`args`→`call_tool`→`ToolResult`。加 `mcp` 依赖。
 - 不做：sandbox。
 - 判据：mock session 离线测；真实 MCP server smoke。
 - 待定：MCP server 配置 = 写死配置文件 vs 可 CRUD 注册表（倾向注册表，多一张表+前端页，单列一刀，不挡 S12a-c）。
+- 落地（对 **mcp 1.27.2 真实 API introspect 核实**）：`app/execution_mcp.py`——`make_mcp_executor(open_session)`：`async with open_session() as session`→`await session.call_tool(intent.tool_name, intent.args or None)`→`CallToolResult`→`ToolResult`（`content` 取 `TextContent.text` join、`structuredContent` 进 data；`isError=True`→ok=False+`mcp_tool_error`（作结果给 LLM 看、非 infra 失败）；连接/协议异常包成 `ToolDispatchError(mcp_call_failed)` 不 crash loop）。真实连接 provider `stdio_mcp_session(command,args,env)`/`sse_mcp_session(url,headers)`（惰性导入、async-cm：`stdio_client`/`sse_client`→`ClientSession`→`initialize`→yield）。**接入点 = S12a 已留的 `make_real_executor(mcp_executor=)`，未改它**。pyproject 加 `[project.optional-dependencies] mcp=["mcp>=1.27,<2"]`。`tests/service/test_execution_mcp.py`（6 离线 mock session + 1 gated smoke，`importorskip`）+ 生产惰性导入路径校验通过；`.venv` 全量 **286 passed, 4 skipped**（A3 既有零改）。MCP server 注册表/配置=独立刀（待定，不含本刀）。
 
 **S12e wire 进 service 🅿️**
 - 做：`/execution/run` 端点 = `build_execution_loop(execution_checkpointer, stream, execute=ToolExecutorGate(make_real_executor(...)))` + `stream_with_heartbeat` SSE。

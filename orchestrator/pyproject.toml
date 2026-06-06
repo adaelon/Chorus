@@ -17,9 +17,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Real sandbox executor backend (S12b). Optional: the pip single-machine path
-# (S6) and offline tests don't need it; install with `.[sandbox]` to use it.
+# Real executor backends (S12). Optional: the pip single-machine path (S6) and
+# offline tests don't need them; install `.[sandbox]` / `.[mcp]` to use them.
 sandbox = ["opensandbox>=0.1.9,<0.2"]
+mcp = ["mcp>=1.27,<2"]
 
 [dependency-groups]
 dev = ["pytest>=9,<10", "pytest-asyncio>=1,<2"]
