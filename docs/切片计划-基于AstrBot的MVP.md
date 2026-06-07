@@ -675,6 +675,23 @@
 
 ---
 
+## S14 内置默认工具（开箱即用 + MCP 预设，§6.25）
+
+> 圆桌 AI 工具面再加"开箱即用"层：内置 in-process 工具（fetch_url/web_search，无 server/无 key）+ MCP 预设一键加。python/bash 仍走隔离沙箱（不裸跑）。
+
+**S14a 内置 in-process 工具（fetch_url + web_search/DuckDuckGo）✅**
+- 做：`builtin_tools.py`——`fetch_url`(httpx GET)/`web_search`(ddgs 免 key) + `BuiltinToolSession`（mcp 兼容形状 list_tools/call_tool）+ `builtin_provider`（impl 可注入测）；`McpRegistry` 加 `include_builtins`(默认 True，把内置当一个 in-process server 索引)+`builtins` 注入；`plan_stream._plan_system` 加 `has_sandbox`（无沙箱不列 sandbox_exec，内置/MCP 仍在）；`create_app` 传 `has_sandbox=sandbox_backend is not None`。pyproject 加 `[tools] ddgs`。
+- 不做：MCP 预设（S14b）；本地裸跑 python/bash（§6.25 否决）。
+- 判据：`pytest`——BuiltinToolSession list/call/未知/异常→error；registry 默认含内置且路由到（注入假 impl 避网络）；prompt 列内置 + has_sandbox 开关。`.venv` 全量 **320 passed, 5 skipped**。
+- 落地：内置 = in-process MCP server（复用 mcp_call 路由，零改 planner/executor/前端）；`tests/service/test_builtin_tools.py`(6) + 既有 registry 测加 `include_builtins=False` 隔离。真 web_search/fetch=手动 smoke（网络）。
+
+**S14b MCP server 预设一键加（前端）🅿️**
+- 做：一排官方 MCP server 预设（filesystem/fetch/git…）+ McpServersPage「从预设添加」一键填表单（command/args 预填）。
+- 不做：内置工具（S14a）。
+- 判据：浏览器——点预设→表单预填→存→重启后目录含其工具。
+
+---
+
 ## 依赖与执行顺序
 
 ```

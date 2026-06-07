@@ -21,6 +21,8 @@ dependencies = [
 # offline tests don't need them; install `.[sandbox]` / `.[mcp]` to use them.
 sandbox = ["opensandbox>=0.1.9,<0.2"]
 mcp = ["mcp>=1.27,<2"]
+# Built-in web_search tool (S14a, §6.24). fetch_url uses httpx (already a dep).
+tools = ["ddgs>=9,<10"]
 
 [dependency-groups]
 dev = ["pytest>=9,<10", "pytest-asyncio>=1,<2"]

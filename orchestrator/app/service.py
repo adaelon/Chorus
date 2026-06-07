@@ -521,9 +521,12 @@ def create_app(
             if probe is None and sandbox_backend is not None:
                 probe = sandbox_backend.readiness  # readiness 接 gate（S12c）→ down 走 S11d 降级边
             gate = ToolExecutorGate(inner, readiness_probe=probe)
-            # execution_stream（测试假流）覆盖；否则用 plan_model + MCP 目录建真 planner（S13f.b）。
+            # execution_stream（测试假流）覆盖；否则用 plan_model + 工具目录建真 planner。
+            # has_sandbox=False（无沙箱后端）时 prompt 不列 sandbox_exec（仅内置/MCP 工具，S14a）。
             plan_stream = execution_stream or default_plan_stream(
-                plan_model, tool_catalog=registry.catalog()
+                plan_model,
+                tool_catalog=registry.catalog(),
+                has_sandbox=sandbox_backend is not None,
             )
             return plan_stream, gate, store
 

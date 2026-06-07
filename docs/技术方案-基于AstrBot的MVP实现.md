@@ -470,6 +470,21 @@ ChannelDriver(adapter)  # 统一接口 send(group_key,account_ref,text)；AstrBo
 
 ---
 
+### §6.25 内置默认工具（开箱即用 + MCP 预设）
+
+**决策**：内置 in-process 工具（`fetch_url`/`web_search`）+ MCP 预设一键加（C 两者结合）；web_search 走 DuckDuckGo 免 key；**不**加本地裸跑。
+
+**否决**：
+- 只做 MCP 预设：每个要 node/python、部分要 key，违"开箱即用"。
+- web_search 强制配 API key：抬高门槛；DuckDuckGo 免 key 兜底、要质量再配。
+- 本地直跑 python/bash（免沙箱）：LLM 代码在宿主机跑，违 §6.23 隔离——python/bash 仍只走沙箱。
+
+**命门**：内置工具 = 一个"in-process MCP server"（mcp 兼容形状）塞进 `McpRegistry`（`include_builtins`），**复用 mcp_call 路由**——planner/executor/前端零改、只加工具实现。无沙箱时 prompt 不列 sandbox_exec（`has_sandbox`），内置/MCP 工具仍可用。
+**何时回头**：要更多内置工具（计算器/读写本地文件…）或 web_search 质量不足接 Brave/Serper 时。
+**展开**：切片 **S14**（S14a 内置工具 / S14b MCP 预设），见切片计划。
+
+---
+
 ## 7. MVP 落地顺序（每步独立可验）
 
 对应需求 §6 步骤 1-4，按"配方抽象"重排，**前端继承(§12)随产品域并入**。每片完成当场验证。

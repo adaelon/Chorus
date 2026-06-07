@@ -85,7 +85,7 @@ def _factory(spec):
 async def test_registry_aggregates_catalog_and_routes_by_tool_name():
     a = _Spec("srvA", ["read_file", "write_file"])
     b = _Spec("srvB", ["search"])
-    reg = McpRegistry([a, b], provider_factory=_factory)
+    reg = McpRegistry([a, b], provider_factory=_factory, include_builtins=False)
     await reg.refresh()
 
     names = {t["name"] for t in reg.catalog()}
@@ -98,7 +98,7 @@ async def test_registry_aggregates_catalog_and_routes_by_tool_name():
 
 
 async def test_registry_unknown_tool_raises():
-    reg = McpRegistry([_Spec("srvA", ["read_file"])], provider_factory=_factory)
+    reg = McpRegistry([_Spec("srvA", ["read_file"])], provider_factory=_factory, include_builtins=False)
     await reg.refresh()
     with pytest.raises(ToolDispatchError) as excinfo:
         await reg.make_executor()(
@@ -116,6 +116,6 @@ async def test_registry_skips_unreachable_server():
 
         return provider
 
-    reg = McpRegistry([_Spec("down", ["x"])], provider_factory=bad_factory)
+    reg = McpRegistry([_Spec("down", ["x"])], provider_factory=bad_factory, include_builtins=False)
     await reg.refresh()  # must not raise
     assert reg.catalog() == []

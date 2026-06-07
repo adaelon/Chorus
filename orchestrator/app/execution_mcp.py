@@ -144,45 +144,68 @@ def provider_for(spec: Any) -> McpSessionProvider:
     return stdio_mcp_session(getattr(spec, "command", ""), list(getattr(spec, "args", []) or []))
 
 
-class McpRegistry:
-    """Aggregate many MCP servers: a tool catalog for the planner + a tool-name
-    routing `ToolExecutor` for `mcp_call` (S13f).
+_BUILTIN = "__builtin__"  # sentinel spec for the in-process built-in tools (S14a)
 
+
+class McpRegistry:
+    """Aggregate built-in tools + many MCP servers into one tool catalog for the
+    planner + a tool-name routing `ToolExecutor` for `mcp_call` (S13f/S14a).
+
+    `include_builtins` (default True) adds the in-process built-in tools
+    (fetch_url / web_search, §6.24) so they're available with zero setup.
     `refresh` connects each server and `list_tools()`; unreachable servers are
     skipped (degrade, don't crash). `provider_factory` is injectable for offline
     tests; defaults to the real stdio/SSE providers.
     """
 
-    def __init__(self, specs: list[Any], *, provider_factory=provider_for) -> None:
+    def __init__(
+        self,
+        specs: list[Any],
+        *,
+        provider_factory=provider_for,
+        include_builtins: bool = True,
+        builtins: dict | None = None,
+    ) -> None:
         self._specs = list(specs)
         self._provider_factory = provider_factory
+        self._include_builtins = include_builtins
+        self._builtins = builtins  # 内置工具表覆盖（离线测注入假 impl，避免真网络）
         self._tool_to_spec: dict[str, Any] = {}
         self._catalog: list[dict] = []
+
+    def _provider(self, spec: Any) -> McpSessionProvider:
+        from .builtin_tools import builtin_provider
+
+        return builtin_provider(self._builtins) if spec == _BUILTIN else self._provider_factory(spec)
+
+    async def _index(self, spec: Any) -> None:
+        try:
+            async with self._provider(spec)() as session:
+                result = await session.list_tools()
+        except Exception:  # noqa: BLE001 - unreachable server -> skip
+            return
+        for tool in getattr(result, "tools", []) or []:
+            name = getattr(tool, "name", None)
+            if not name:
+                continue
+            self._tool_to_spec[name] = spec
+            self._catalog.append(
+                {"name": name, "description": getattr(tool, "description", "") or ""}
+            )
 
     async def refresh(self) -> None:
         self._tool_to_spec = {}
         self._catalog = []
-        for spec in self._specs:
-            try:
-                async with self._provider_factory(spec)() as session:
-                    result = await session.list_tools()
-            except Exception:  # noqa: BLE001 - unreachable server -> skip
-                continue
-            for tool in getattr(result, "tools", []) or []:
-                name = getattr(tool, "name", None)
-                if not name:
-                    continue
-                self._tool_to_spec[name] = spec
-                self._catalog.append(
-                    {"name": name, "description": getattr(tool, "description", "") or ""}
-                )
+        sources = ([_BUILTIN] if self._include_builtins else []) + self._specs
+        for spec in sources:
+            await self._index(spec)
 
     def catalog(self) -> list[dict]:
-        """[{name, description}] across all reachable servers (for the plan prompt)."""
+        """[{name, description}] across built-ins + all reachable servers (plan prompt)."""
         return list(self._catalog)
 
     def make_executor(self) -> ToolExecutor:
-        """A `ToolExecutor` for `mcp_call`: route by `intent.tool_name` to its server."""
+        """A `ToolExecutor` for `mcp_call`: route by `intent.tool_name` to its source."""
 
         async def execute(intent: ToolCallIntent) -> ToolResult:
             spec = self._tool_to_spec.get(intent.tool_name)
@@ -192,6 +215,6 @@ class McpRegistry:
                     f"no MCP server provides tool {intent.tool_name!r}",
                     retryable=False,
                 )
-            return await make_mcp_executor(self._provider_factory(spec))(intent)
+            return await make_mcp_executor(self._provider(spec))(intent)
 
         return execute
