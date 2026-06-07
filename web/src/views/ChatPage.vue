@@ -134,7 +134,8 @@
             <div class="text-caption text-medium-emphasis">
               第 {{ i + 1 }} 步 · {{ s.tool_name }}
             </div>
-            <pre class="trace-pre cmd">{{ s.command }}</pre>
+            <pre v-if="s.command" class="trace-pre cmd">{{ s.command }}</pre>
+            <pre v-if="s.args" class="trace-pre cmd">{{ JSON.stringify(s.args, null, 2) }}</pre>
             <div
               class="text-caption mt-1"
               :class="s.ok === false ? 'text-error' : 'text-success'"
@@ -311,6 +312,7 @@ const TOOL_STATUS_LABEL = { planning: '正在想用什么工具…', running: '�
 const normStep = (s) => ({
   tool_name: s.tool_name,
   command: s.command ?? s.args?.command ?? '',
+  args: s.args && Object.keys(s.args).length ? s.args : null,
   ok: s.ok,
   content: s.content,
   error: s.error,
@@ -441,6 +443,7 @@ const handlers = {
     currentToolSteps.push({
       tool_name: e.tool_name,
       command: e.command,
+      args: e.args || null,
       ok: null,
       content: '',
       error: null,

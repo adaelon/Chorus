@@ -83,7 +83,9 @@ async def _run_tool_phase(
         if sub.output is not None or not sub.pending_tools:
             break  # planner 给了 final / 没要工具 → 停止用工具
         intent = sub.pending_tools[0]
-        emit("tool_call", tool_name=intent.tool_name, command=intent.args.get("command", ""))
+        emit("tool_call", tool_name=intent.tool_name,
+             command=intent.args.get("command", ""),
+             args={k: v for k, v in intent.args.items() if k != "command"} if intent.args else {})
         emit("tool_status", stage="running")
         sub = sub.model_copy(update=await tool_dispatch(sub, execute=execute))
         result = sub.tool_results[-1] if sub.tool_results else None
