@@ -2,15 +2,15 @@
 
 > 下一对话的**入口 + 热内存**。**单幅覆盖写、零累积**——每会话整页重写，不追加历史。
 > 本盘是【路由器 + 在途状态】，**不是架构本体**：架构看 `docs/`，本盘只回答「现在在哪 · 下一步做什么 · 哪些还没刷盘」。过期即弃。
-> 快照：2026-06-07 · 写于 HEAD `0b12117`（S13f.c）
+> 快照：2026-06-07 · 写于 HEAD `92894f3`（S14b）
 
 ---
 
 ## ⏱️ 第一件事：新鲜度自检（30 秒）
 
 跑 `git log --oneline -1`：
-- **= `0b12117`** → 本盘新鲜，照读下文。
-- **≠ `0b12117`** → HEAD 已前移，下方「未刷盘增量」可能**已过期** → 以 git 为准：看 `git status -s` + `docs/代码链路.md` 尾部最近条目，重新理解现状后**重写本盘**。
+- **= `92894f3`** → 本盘新鲜，照读下文。
+- **≠ `92894f3`** → HEAD 已前移 → 以 git 为准：看 `git status -s` + `docs/代码链路.md` 尾部最近条目，重新理解现状后**重写本盘**。
 
 ---
 
@@ -28,46 +28,44 @@
 
 | 面 | 状态 | 说明 |
 |---|---|---|
-| S13 执行层织入圆桌 | 🟢 已闭合 | 已提交 `0b12117`，沙箱+MCP 全链路通 |
-| **S14a 内置工具** | 🟡 **完成未提交** | 代码+测试在工作区，doc 已标 ✅ 320 passed；**差 commit+push** |
-| S14b MCP 预设一键加 | 🔴 未起（🅿️） | 纯前端，下一刀 |
-| 子群/群递归（S5.6） | 🔴 设计中 | `docs/子群对话.md`（未跟踪）；todo 第 2 条 |
+| **S14 工具面** | 🟢 刚闭合 | S14a 内置工具 + S14b MCP 预设，均已提交并推送 |
+| 执行层 S11–S14 | 🟢 全线收尾 | 子图契约→真 executor(沙箱/MCP)→织入圆桌 turn→工具面 |
+| MVP 主线 S1–S14 | 🟢 基本完成 | 圆桌/扇出/多 bot/配方 L1–L4/历史重试/执行层全通 |
+| **无在途切片** | ⚪ 待定方向 | 下一步是开放议题，非排队中的刀（见下） |
+| 子群/群递归 S5.6 | 🟡 设计中 | `docs/子群对话.md`（草稿未跟踪）；todo 第 2 条 |
 | 流式体感 bug | 🔴 待复现 | todo 第 1 条，与记忆 [[chorus-model-and-latency]] 冲突 |
 
 ---
 
 ## 🔥 热内存（楔合点 = 从这接手）
 
-**上次会话动作**：读全三份架构文档理解项目 → 建本盘 + CLAUDE.md 引导链。S14a 代码仍躺工作区未提交。
+**上次会话动作**：建引导链（CLAUDE.md + 本盘）→ 收口 S14a → 清 `.gitignore`(sqlite-shm/wal) + lockfile 同步 → 做完 S14b（MCP 预设）。**工作树干净**（无未刷盘增量），仅剩三个未跟踪草稿（见脏件区）。
 
-**未刷盘增量 = S14a 一刀，已绿未提交**（明细见 `代码链路.md` S14a 条目）：
-- 新增 `orchestrator/app/builtin_tools.py`（`fetch_url`/`web_search` ddgs 免 key + `BuiltinToolSession` mcp 兼容形状）
-- 改 `execution_mcp.py`（`McpRegistry.include_builtins`）· `nodes/plan_stream.py`（`_plan_system` 加 `has_sandbox`）· `service.py`（传 `has_sandbox`）· `pyproject.toml`（`[tools] ddgs`）
-- 新增 `tests/service/test_builtin_tools.py`(6) · 改 `test_mcp_servers.py`（`include_builtins=False` 隔离）
+**没有排队中的下一刀**——MVP 路线 S1–S14 已基本走完。下一步需用户定方向，候选（来自 todo，未转切片）：
+1. **流式体感**修复（todo 第 1 条，体感问题，优先级或最高）
+2. **群递归 / 子群圆桌** S5.6（已有 `子群对话.md` 设计草稿，是真新引擎能力）
+3. **gateway**：配方库适配 telegram（telegram 侧目前只跑 roundtable）
 
-**下一步（二选一，问用户）**：
-1. **收口 S14a** → commit+push main（[[auto-commit-each-slice]] 默认可直接做）；先剔脏件（见下）。
-2. **起 S14b** → `McpServersPage`「从预设添加」官方 server（filesystem/fetch/git…）预填表单。
-
-**验证**：`orchestrator/.venv` 跑 pytest（系统 Python 3.14 缺依赖，[[chorus-test-env]]）。
+**验证**：orchestrator 用 `orchestrator/.venv` 跑 pytest（系统 Python 3.14 缺依赖，[[chorus-test-env]]）；前端 `cd web && npm run build`。
 
 ---
 
 ## 🧭 在途议题（todo.md/txt 原话，未转切片）
 
-1. **流式体感**：出两字后整体蹦、非逐字 — 需 live curl 带时间戳复现（S3.6g 用过此法）。
-2. **群递归**：原语怎么支持群嵌套 → `子群对话.md` 草稿（= S5.6 breakout）。
-3. **gateway**：配方库怎么适配 telegram（telegram 侧目前只跑 roundtable）。
-4. **skill 接入**：mcp/sandbox 已 S11–S14；skill（AstrBot SkillManager / Shipyard Neo）仍空间预留未落。
-5. **流程图→AI 圆桌讨论→分头负责各自代码**：新协作形态设想（疑似新配方+breakout）。
-6. **好友设计**：每人 llm 后端选择（S7.4 已落「AstrBot bot 作后端」；此条疑旧念或想再演进 → 待澄清）。
+1. **流式体感**：出两字后整体蹦、非逐字 — 需 live curl 带时间戳复现（S3.6g 用过此法证伪过一次）。
+2. **群递归**：原语怎么支持群嵌套 → `子群对话.md` 草稿（= S5.6 breakout 原语）。
+3. **gateway**：配方库怎么适配 telegram。
+4. **流程图→AI 圆桌讨论→分头负责各自代码**：新协作形态设想（疑似新配方+breakout）。
+5. **好友设计**：每人 llm 后端选择（S7.4 已落「AstrBot bot 作后端」；此条疑旧念或想再演进 → 待澄清）。
 
 ---
 
-## ⚠️ 工作区脏件（提交前剔除）
+## ⚠️ 工作区未跟踪草稿（你的东西，未替你决定是否进 git）
 
-- `orchestrator/group_checkpoints.sqlite-shm` / `.sqlite-wal` — 运行态，**勿提交**。`.gitignore` 只有 `*.sqlite`，未盖 shm/wal → **建议补 `*.sqlite-shm` `*.sqlite-wal`**。
-- `todo.md` / `todo.txt` / `docs/子群对话.md` — 工作草稿，确认是否进 git 再 add，别误带。
+- `todo.md` / `todo.txt` — 待办笔记
+- `docs/子群对话.md` — S5.6 群递归设计草稿
+
+（sqlite-shm/wal 已被 `.gitignore` 永久挡住，不再冒头。）
 
 ---
 
