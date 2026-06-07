@@ -41,10 +41,12 @@
 cd orchestrator
 python -m venv .venv
 .venv/Scripts/python -m pip install -e .            # 或装 langgraph / langgraph-checkpoint-sqlite / fastapi / uvicorn / sqlmodel / langchain-openai / pydantic
-.venv/Scripts/python -m pytest                       # 跑切片判据（当前 157 passed）
+.venv/Scripts/python -m pytest                       # 跑切片判据（当前 320 passed）
 .venv/Scripts/python -m app.server                   # 起完整服务（真实 LLM，需配 LLM 环境）
 ```
 LLM 配置经环境变量 / `orchestrator/.env`（见 `app/config.py`）。
+
+**执行层（可选，圆桌 AI 工具化）**：需配 `CHORUS_SANDBOX_DOMAIN=127.0.0.1:8080`（OpenSandbox server）或 `CHORUS_EXECUTION=1`（仅 MCP）。详见 **[`docs/启动指南.md §四`](docs/启动指南.md)**。
 
 **前端（:5173）**
 ```bash
@@ -57,7 +59,7 @@ npm run dev          # 浏览器开 http://localhost:5173（连后端 :8900）
 
 ## 进度
 
-S1–S5 已完成：扇出策展、持久身份 + 信誉、圆桌配方 + 群视图、AstrBot 多 bot 桥、transport 无关运行时、配方分层 L1→L4（原语三态化 + 声明式 DAG 编译/校验/带闸 + 配方库 + 卡片流画布 + AI 现搭配方）。规划中：S5.6 分层圆桌、S6 pip 发布。
+S1–S14 已完成：扇出策展、持久身份 + 信誉、圆桌配方 + 群视图、AstrBot 多 bot 桥、transport 无关运行时、配方分层 L1→L4（原语三态化 + 声明式 DAG 编译/校验/带闸 + 配方库 + 卡片流画布 + AI 现搭配方）+ **执行层**（圆桌 AI 先用工具干活再发言：OpenSandbox 沙箱 + MCP 任意工具 + 内置 fetch/web_search，实时 trace 可见）。规划中：S5.6 分层圆桌、S6 pip 发布。
 
 ## License
 
