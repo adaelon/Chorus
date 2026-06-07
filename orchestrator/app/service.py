@@ -482,7 +482,29 @@ def create_app(
         app.state.model_provider = mp
         app.state.reputation_adjuster = ra
 
-        def _build_graphs(saver) -> None:
+        def _make_execution_primitives():
+            # S13d：执行原语（plan_stream + gate + sandbox session store）——圆桌 turn 工具阶段
+            # 与 standalone /execution/run 共用一份。仅当配了 planner 流时启用（门控）。
+            if execution_stream is None:
+                return None, None, None
+            store = SessionStore(sandbox_backend) if sandbox_backend is not None else None
+            mcp_exec = (
+                make_mcp_executor(mcp_session_provider)
+                if mcp_session_provider is not None
+                else None
+            )
+            inner = make_real_executor(
+                sandbox_backend=sandbox_backend,
+                sandbox_store=store,  # 有 store 则复用（S12c），优先于 per-call
+                mcp_executor=mcp_exec,
+            )
+            probe = execution_readiness_probe
+            if probe is None and sandbox_backend is not None:
+                probe = sandbox_backend.readiness  # readiness 接 gate（S12c）→ down 走 S11d 降级边
+            gate = ToolExecutorGate(inner, readiness_probe=probe)
+            return execution_stream, gate, store
+
+        def _build_graphs(saver, *, plan_stream=None, execute=None) -> None:
             # 两张配方图共享同一 checkpointer（不同 group_key 互不干扰）。
             app.state.graph = build_fanout_recipe(
                 saver,
@@ -494,6 +516,7 @@ def create_app(
                 clarify_assess=clarify_assess,
             )
             # 圆桌：human_in_loop=True 每轮停在 human_gate（让位窗口，S3.6d resume 续）。
+            # S13d：plan_stream/execute 注入即工具化 turn（全员可用，§6.24）；None=纯发言门控关。
             app.state.roundtable_graph = build_roundtable_recipe(
                 saver,
                 assign=assign,
@@ -504,6 +527,8 @@ def create_app(
                 pick=pick,
                 clarify_assess=clarify_assess,
                 compose=compose,
+                plan_stream=plan_stream,
+                execute=execute,
                 human_in_loop=True,
             )
             # S4.4：telegram 驱动器——入站起圆桌、后台多轮、出站经桥推回群。
@@ -518,6 +543,8 @@ def create_app(
                 pick=pick,
                 clarify_assess=None,
                 compose=compose,
+                plan_stream=plan_stream,
+                execute=execute,
                 human_in_loop=True,
             )
             outbound = OutboundClient(bridge_url, bot_ref_provider_from(sf))
@@ -538,29 +565,16 @@ def create_app(
                 "compose": compose,
                 "compose_produce": compose_produce,  # S10a：/recipe/run 跑 roundtable_produce 时注入
                 "assess": clarify_assess,
+                "plan_stream": plan_stream,  # S13d：自定义/auto 配方的 turn 也工具化
+                "execute": execute,
             }
 
-        async def _build_execution(stack: AsyncExitStack) -> None:
-            # S12e：仅当配了 planner 流时挂执行子图（单机/纯产品路径可不带）。
-            if execution_stream is None:
+        async def _build_execution_loop(stack, plan_stream, gate, store) -> None:
+            # S12e：standalone /execution/run 子图，复用上面建的 gate/store。
+            if plan_stream is None:
                 app.state.execution_graph = None
                 app.state.execution_session_store = None
                 return
-            store = SessionStore(sandbox_backend) if sandbox_backend is not None else None
-            mcp_exec = (
-                make_mcp_executor(mcp_session_provider)
-                if mcp_session_provider is not None
-                else None
-            )
-            inner = make_real_executor(
-                sandbox_backend=sandbox_backend,
-                sandbox_store=store,  # 有 store 则复用（S12c），优先于 per-call
-                mcp_executor=mcp_exec,
-            )
-            probe = execution_readiness_probe
-            if probe is None and sandbox_backend is not None:
-                probe = sandbox_backend.readiness  # readiness 接 gate（S12c）→ down 走 S11d 降级边
-            gate = ToolExecutorGate(inner, readiness_probe=probe)
             if execution_checkpointer is not None:
                 exsaver = execution_checkpointer
             else:
@@ -568,7 +582,7 @@ def create_app(
                     AsyncSqliteSaver.from_conn_string(execution_db_path)
                 )
             app.state.execution_graph = build_execution_loop(
-                exsaver, stream=execution_stream, execute=gate
+                exsaver, stream=plan_stream, execute=gate
             )
             app.state.execution_session_store = store
 
@@ -580,8 +594,9 @@ def create_app(
                     saver = await stack.enter_async_context(
                         AsyncSqliteSaver.from_conn_string(db_path)
                     )
-                _build_graphs(saver)
-                await _build_execution(stack)
+                plan_stream, gate, store = _make_execution_primitives()
+                _build_graphs(saver, plan_stream=plan_stream, execute=gate)
+                await _build_execution_loop(stack, plan_stream, gate, store)
                 yield
         finally:
             await registry_engine.dispose()

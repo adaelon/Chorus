@@ -20,8 +20,10 @@ from ..nodes.clarify import ClarifyFn
 from ..nodes.extract import ClaimExtractor
 from ..nodes.frame import AssignFn
 from ..nodes.generate import GenerateFn, ModelProvider, PersonaProvider
+from ..nodes.llm_plan import PlanStream
 from ..nodes.schedule import PickFn
 from ..nodes.synthesize import ComposeFn
+from ..nodes.tool_dispatch import ToolExecutor
 from .builtin import ROUNDTABLE, ROUNDTABLE_CONTINUOUS
 from .compile import compile_recipe
 
@@ -37,6 +39,8 @@ def build_roundtable_recipe(
     pick: PickFn | None = None,
     clarify_assess: ClarifyFn | None = None,
     compose: ComposeFn | None = None,
+    plan_stream: PlanStream | None = None,  # S13d 门控：注入即工具化 turn（§6.24）
+    execute: ToolExecutor | None = None,
     human_in_loop: bool = False,
 ):
     """圆桌配方整图：编译 `ROUNDTABLE`(人在环) 或 `ROUNDTABLE_CONTINUOUS`(自动连续)。"""
@@ -49,6 +53,8 @@ def build_roundtable_recipe(
         "pick": pick,
         "compose": compose,
         "assess": clarify_assess,  # clarify 节点形参名是 assess
+        "plan_stream": plan_stream,  # turn 工具阶段（S13d）；compile 按签名只注给 turn
+        "execute": execute,
     }
     recipe = ROUNDTABLE if human_in_loop else ROUNDTABLE_CONTINUOUS
     return compile_recipe(recipe, checkpointer, deps=deps)

@@ -655,10 +655,11 @@
 - 判据：`pytest`——工具化 turn 的 SSE 出执行子事件且按 speaker/turn 归属；trace 可按 (key,speaker,turn) 取回；非工具化 turn SSE 不变（A3）。
 - 落地：**实时子事件用 LangGraph custom stream**（工具阶段在 turn 节点内跑、外层 astream 看不到→需 stream writer）。`state.py` 加 `TurnTrace{speaker_id,turn,steps,trace}` + `GroupState.turn_traces`；`turn._run_tool_phase` 经 `get_stream_writer`（`_safe_writer` 包：非流式上下文 RuntimeError→no-op，保节点级单测）边跑边 emit `{kind:tool_status|tool_call|tool_result, speaker_id, turn, ...}`，并把本轮（真用了工具时）trace 归 (speaker,turn) append 进 `turn_traces`（进 checkpointer）+ `find_turn_trace` 检索；`transport/runtime.py` 加 `ToolEvent`（`to_dict`: kind→type）+ `to_event` 处理 `mode=="custom"`（仅 3 类 tool kind）+ `iter_events` stream_mode 加 `"custom"`。`tests/transport/test_tool_events.py`（3：custom 映射/忽略非 tool/**最小图 tool turn 经 iter_events 出带归属子事件**）+ `test_turn_execution.py`（+2：turn_traces 存+`find_turn_trace` 取回 / 无工具不存）；`.venv` 全量 **305 passed, 5 skipped**（A3：现有 roundtable_service/relay/event 零改——未启用 execution 无 custom 事件）。HTTP 检索端点 + 前端抽屉 = S13e。
 
-**S13d server.py 通电（真 model + 真沙箱 smoke）**
+**S13d server.py 通电（真 model + 真沙箱 smoke）✅**
 - 做：`server.py` 读 env（`CHORUS_SANDBOX_DOMAIN/API_KEY`）→ `OpenSandboxBackend` + `default_plan_stream(model)` → 圆桌图配 execution 启用（全员可用）；env 缺→execution 不启用（纯发言，不报错）。
 - 不做：MCP（S13f）；前端（S13e）。
 - 判据：真 model + 真 opensandbox-server smoke（gated/录屏）：圆桌里某 AI 一轮"算 fib(10)"→写 python→跑→见 55→发言带结果；env 缺时圆桌纯发言照旧。
+- 落地：`recipes/roundtable.py:build_roundtable_recipe` 加 `plan_stream`/`execute` 参→进 deps（`compile_recipe` 按签名只注给 turn）；`service.py` lifespan 抽 `_make_execution_primitives`（建 `SessionStore`+`ToolExecutorGate(make_real_executor(...), readiness_probe=backend.readiness)`+plan_stream，**圆桌 turn 与 standalone loop 共用一份**）→ 在 `_build_graphs` 前算好、传进 roundtable_graph+relay_graph+`recipe_deps`（auto/自定义配方的 turn 也工具化）；`_build_execution_loop` 复用同 gate/store。`server.py` `_execution_kwargs()`：`CHORUS_SANDBOX_DOMAIN` 在→`OpenSandboxBackend`+`default_plan_stream(_model)`，缺→`{}`(纯发言)。`tests/service/test_roundtable_execution.py`（1 离线 e2e：配 execution→`/roundtable/stream` SSE 出 `tool_call`/`tool_result`(speaker=A,content="55")+仍出 turn+human_gate）；`.venv` 全量 **306 passed, 5 skipped**（A3：未配 execution 圆桌/relay/recipe_run 零改）。真 model+真 opensandbox 端到端=手动录屏（沙箱已 S12b smoke、planner 已 S13a smoke 各自覆盖）。
 
 **S13e ChatPage 实时执行进度 + "查看执行"抽屉**
 - 做：ChatPage 接执行子事件——气泡内实时显"正在写代码/跑工具…"进度 + tool_call/result；AI 气泡旁"查看执行"→抽屉嵌 ExecutionPage（按 speaker/turn 拉 trace 或接 live）。
