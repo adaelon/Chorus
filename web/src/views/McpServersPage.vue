@@ -10,6 +10,34 @@
 
     <v-alert v-if="error" type="error" class="mb-4" :text="error" />
 
+    <!-- 从预设添加 -->
+    <v-card variant="tonal" class="mb-4">
+      <v-card-title class="text-subtitle-1">从预设添加</v-card-title>
+      <v-card-text>
+        <p class="text-medium-emphasis text-body-2 mb-2">
+          点一个官方 MCP server 预设 → 下方表单自动预填 → 按需改路径/参数 → 点「新建」保存。
+        </p>
+        <v-chip-group column>
+          <v-chip
+            v-for="p in presets"
+            :key="p.name"
+            variant="outlined"
+            @click="applyPreset(p)"
+          >
+            {{ p.name }}
+          </v-chip>
+        </v-chip-group>
+        <v-alert
+          v-if="presetHint"
+          type="info"
+          variant="tonal"
+          density="compact"
+          class="mt-2"
+          :text="presetHint"
+        />
+      </v-card-text>
+    </v-card>
+
     <!-- 新建 / 编辑表单 -->
     <v-card variant="outlined" class="mb-6">
       <v-card-title>{{ editing ? '编辑' : '新建' }} MCP server</v-card-title>
@@ -85,6 +113,67 @@ const editing = ref(false)
 
 const blank = () => ({ id: '', name: '', transport: 'stdio', command: '', args: [], url: '' })
 const form = ref(blank())
+const presetHint = ref('')
+
+// 官方 MCP server 预设：点一下预填表单，需要的路径/参数由用户再改。
+// command/args 是常见安装方式（npx 需 node、uvx 需 uv/uvx）。
+const presets = [
+  {
+    name: 'filesystem',
+    transport: 'stdio',
+    command: 'npx',
+    args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp'],
+    hint: 'filesystem：读写本地目录。把 /tmp 改成要暴露给 AI 的目录（需 node/npx）。',
+  },
+  {
+    name: 'fetch',
+    transport: 'stdio',
+    command: 'uvx',
+    args: ['mcp-server-fetch'],
+    hint: 'fetch：抓网页转 markdown（需 uv/uvx）。',
+  },
+  {
+    name: 'git',
+    transport: 'stdio',
+    command: 'uvx',
+    args: ['mcp-server-git', '--repository', '/path/to/repo'],
+    hint: 'git：操作本地仓库。把 /path/to/repo 改成你的仓库路径（需 uv/uvx）。',
+  },
+  {
+    name: 'memory',
+    transport: 'stdio',
+    command: 'npx',
+    args: ['-y', '@modelcontextprotocol/server-memory'],
+    hint: 'memory：知识图谱式长期记忆（需 node/npx）。',
+  },
+  {
+    name: 'sequential-thinking',
+    transport: 'stdio',
+    command: 'npx',
+    args: ['-y', '@modelcontextprotocol/server-sequential-thinking'],
+    hint: 'sequential-thinking：分步推理工具（需 node/npx）。',
+  },
+  {
+    name: 'time',
+    transport: 'stdio',
+    command: 'uvx',
+    args: ['mcp-server-time'],
+    hint: 'time：时区/时间换算（需 uv/uvx）。',
+  },
+]
+
+function applyPreset(p) {
+  editing.value = false
+  form.value = {
+    id: '',
+    name: p.name,
+    transport: p.transport,
+    command: p.command || '',
+    args: [...(p.args || [])],
+    url: p.url || '',
+  }
+  presetHint.value = p.hint || ''
+}
 
 // args 数组 ↔ 空格分隔文本（表单友好）
 const argsText = computed({
@@ -103,6 +192,7 @@ function subtitleOf(m) {
 function resetForm() {
   form.value = blank()
   editing.value = false
+  presetHint.value = ''
 }
 
 async function load() {

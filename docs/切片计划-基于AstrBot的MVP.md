@@ -685,10 +685,13 @@
 - 判据：`pytest`——BuiltinToolSession list/call/未知/异常→error；registry 默认含内置且路由到（注入假 impl 避网络）；prompt 列内置 + has_sandbox 开关。`.venv` 全量 **320 passed, 5 skipped**。
 - 落地：内置 = in-process MCP server（复用 mcp_call 路由，零改 planner/executor/前端）；`tests/service/test_builtin_tools.py`(6) + 既有 registry 测加 `include_builtins=False` 隔离。真 web_search/fetch=手动 smoke（网络）。
 
-**S14b MCP server 预设一键加（前端）🅿️**
+**S14b MCP server 预设一键加（前端）✅**
 - 做：一排官方 MCP server 预设（filesystem/fetch/git…）+ McpServersPage「从预设添加」一键填表单（command/args 预填）。
 - 不做：内置工具（S14a）。
 - 判据：浏览器——点预设→表单预填→存→重启后目录含其工具。
+- 落地：`McpServersPage.vue` 加「从预设添加」卡（6 预设 chip：filesystem/fetch/git/memory/sequential-thinking/time）→ `applyPreset` 预填 `form`（name/transport/command/args）+ `presetHint` 提示改路径/依赖（npx/uvx）；不自动存（用户审后点新建）。纯前端、零后端改、复用既有 CRUD。`npm run build` 过（723 模块）；点预设→预填→存→重启含其工具=手动验。详见代码链路。
+
+> **S14（a-b）完成** ✅：圆桌 AI 工具面 = 内置开箱即用（fetch_url/web_search）+ MCP（注册表 CRUD + 预设一键）+ 沙箱（python/bash 隔离）。**MVP 执行层（S11–S14）全线收尾**。
 
 ---
 
