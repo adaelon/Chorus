@@ -8,6 +8,7 @@
       <v-btn to="/history" variant="text">历史</v-btn>
       <v-btn to="/contacts" variant="text">好友</v-btn>
       <v-btn to="/llm-backends" variant="text">模型</v-btn>
+      <v-btn to="/mcp-servers" variant="text">工具</v-btn>
     </v-app-bar>
     <v-main>
       <router-view />

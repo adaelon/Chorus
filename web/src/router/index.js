@@ -6,6 +6,7 @@ import ContactsPage from '../views/ContactsPage.vue'
 import RecipesPage from '../views/RecipesPage.vue'
 import HistoryPage from '../views/HistoryPage.vue'
 import LLMBackendsPage from '../views/LLMBackendsPage.vue'
+import McpServersPage from '../views/McpServersPage.vue'
 
 const routes = [
   { path: '/', name: 'home', component: HomeView },
@@ -15,6 +16,7 @@ const routes = [
   { path: '/history', name: 'history', component: HistoryPage },
   { path: '/contacts', name: 'contacts', component: ContactsPage },
   { path: '/llm-backends', name: 'llm-backends', component: LLMBackendsPage },
+  { path: '/mcp-servers', name: 'mcp-servers', component: McpServersPage },
 ]
 
 export default createRouter({

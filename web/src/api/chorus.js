@@ -130,6 +130,12 @@ export const validateRecipe = (graph) =>
 export const recipeRunStream = (recipe_id, group_key, request, roster, handlers) =>
   streamPost('/recipe/run', { recipe_id, group_key, request, roster }, handlers)
 
+// MCP server 注册表 CRUD（S13f，§6.24）：圆桌 AI 工具面来源（沙箱外的 MCP 工具）。
+export const listMcpServers = () => brainApi.get('/mcp-servers').then((r) => r.data)
+export const createMcpServer = (m) => brainApi.post('/mcp-servers', m).then((r) => r.data)
+export const updateMcpServer = (id, m) => brainApi.put(`/mcp-servers/${id}`, m).then((r) => r.data)
+export const deleteMcpServer = (id) => brainApi.delete(`/mcp-servers/${id}`).then((r) => r.data)
+
 // LLM 后端注册表 CRUD（S7.1c，§6.18）：每好友独立模型的引用目标。api_key 直接粘贴存本地 DB（已 gitignore）。
 export const listLlmBackends = () => brainApi.get('/llm-backends').then((r) => r.data)
 export const createLlmBackend = (b) => brainApi.post('/llm-backends', b).then((r) => r.data)

@@ -667,10 +667,11 @@
 - 判据：浏览器手动——圆桌里工具化 AI 发言时见实时执行进度，点开抽屉见完整 trace（时间线+工具卡）。
 - 落地（后端+前端）：后端 `get_conversation` 响应加 `turn_traces`（drill-in 一次 fetch 载全；history reload 用）。前端 `ChatPage.vue`：`streamPost` 按 type 自动分派→加 `tool_status`/`tool_call`/`tool_result` handler——`planning` 重置本轮 `currentToolSteps`、`tool_call` push 步、`tool_result` 填结果，全程刷 `status`（实时进度"运行：<command>"/"工具得到结果"）；`turn` 完成时把 `currentToolSteps` 挂到该气泡 `m.toolSteps`；气泡旁"🔧 查看执行（N 步）"按钮→`v-dialog` 抽屉渲染步骤时间线（命令卡+结果/出错）；history reload 把 `turn_traces` 按 speaker 顺序 best-effort 挂回 ai 气泡（`normStep` 归一 AgentStep.args.command ↔ 事件 command）。`tests/service/test_roundtable_execution.py`（+1：`/conversations/{key}` 出 turn_traces，speaker=A/turn=1/command 保留/content="55"）；`.venv` 全量 **307 passed, 5 skipped**；`npm run build` 过（722 模块）。浏览器手动验：工具化 AI 发言时见实时进度、点开抽屉见时间线。**S13 仅剩 S13f（MCP 工具注册表）**——sandbox code-interpreter 全链路（引擎→turn→trace/SSE→server→UI）打通。
 
-**S13f MCP 工具注册表（扩工具面，§S12d 待定）**
+**S13f MCP 工具注册表（扩工具面，§S12d 待定）✅**（拆 a/b/c）
 - 做：`McpServer` 表（id,name,transport,command/args/url）+ CRUD；planner tool catalog = aggregate 各 server `list_tools()`；`mcp_session_provider` from registry；前端 MCP server 管理页。
 - 不做：sandbox（已 S13a-e）。
 - 判据：配 MCP server → 圆桌 AI 能调其工具（catalog 出现在 plan prompt、调用走 S12d adapter）；离线 mock + 真 server smoke。
+- 落地：**S13f.a** `db/models.py:McpServer` + `/mcp-servers` CRUD + `execution_mcp.py:McpRegistry`（`refresh` 连各 server `list_tools`→`tool_name→spec` 路由表+`catalog`、不可达 skip；`make_executor` 按 tool_name 路由到对应 server，未知→`mcp_unknown_tool`；`provider_factory` 可注入离线测）。**S13f.b** `plan_stream.py:_plan_system(tool_catalog)` 动态列 sandbox+MCP 工具 + `default_plan_stream(model,*,tool_catalog)`；`create_app` 加 `plan_model`，`_make_execution_primitives` 改 async：DB→`McpRegistry.refresh()`→catalog 喂 planner + `make_executor` 传 `make_real_executor`（execution_stream 仍覆盖）；`server.py` 传 `plan_model`、`CHORUS_SANDBOX_DOMAIN`(沙箱+MCP)/`CHORUS_EXECUTION=1`(仅 MCP) 启用。**S13f.c** `web/McpServersPage.vue`（CRUD：stdio command+args / sse url）+ api `list/create/update/deleteMcpServer` + 路由 `/mcp-servers` + 导航「工具」。`tests/service/test_mcp_servers.py`(4) + `test_plan_stream.py`(+2) + `test_roundtable_execution.py`(+1)；`.venv` 全量 **314 passed, 5 skipped**；`npm run build` 过。注：注册表 lifespan 启动时 refresh（运行时 CRUD 加 server 需重启）；真 MCP server 端到端=手动 smoke（路由/prompt 已离线测）。**S13 全部完成**——圆桌 AI 工具面 = 沙箱 + 任意 MCP，全链路（引擎→turn→trace/SSE→server→UI→工具注册表）通且产品逻辑零改（门控）。
 
 ---
 
