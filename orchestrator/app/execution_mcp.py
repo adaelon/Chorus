@@ -87,7 +87,7 @@ def make_mcp_executor(open_session: McpSessionProvider) -> ToolExecutor:
     async def execute(intent: ToolCallIntent) -> ToolResult:
         try:
             async with open_session() as session:
-                result = await session.call_tool(intent.tool_name, intent.args or None)
+                result = await session.call_tool(intent.tool_name, intent.args or {})
         except ToolDispatchError:
             raise
         except Exception as exc:  # transport/protocol error -> degrade, don't crash

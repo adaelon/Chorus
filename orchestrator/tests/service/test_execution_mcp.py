@@ -76,13 +76,14 @@ async def test_mcp_call_success_joins_text_and_passes_args():
     assert result.data["structuredContent"] == {"k": 1}
 
 
-async def test_mcp_call_empty_args_passed_as_none():
+async def test_mcp_call_empty_args_passed_as_empty_dict():
+    # Empty args must pass {} not None — MCP servers expect an object, not undefined.
     session = _FakeSession(_Result([_Text("ok")]))
     execute = make_mcp_executor(_provider(session))
 
     await execute(_intent(args={}))
 
-    assert session.calls == [("search", None)]
+    assert session.calls == [("search", {})]
 
 
 async def test_mcp_tool_error_returns_ok_false_with_error():
