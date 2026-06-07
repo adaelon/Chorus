@@ -34,7 +34,10 @@ SandboxFactory = Callable[[], Awaitable[Any]]
 ReadinessProbe = Callable[[], Awaitable[bool]]
 
 
-def _default_factory(domain: str, api_key: str) -> SandboxFactory:
+_DEFAULT_IMAGE = "opensandbox/code-interpreter:latest"
+
+
+def _default_factory(domain: str, api_key: str, image: str) -> SandboxFactory:
     """Build the real-SDK async factory; import is lazy so the module loads bare."""
 
     async def create() -> Any:
@@ -42,7 +45,8 @@ def _default_factory(domain: str, api_key: str) -> SandboxFactory:
         from opensandbox.config.connection import ConnectionConfig
 
         return await Sandbox.create(
-            connection_config=ConnectionConfig(domain=domain, api_key=api_key)
+            image,
+            connection_config=ConnectionConfig(domain=domain, api_key=api_key),
         )
 
     return create
@@ -111,10 +115,11 @@ class OpenSandboxBackend:
         *,
         domain: str = "",
         api_key: str = "",
+        image: str = _DEFAULT_IMAGE,
         factory: SandboxFactory | None = None,
         readiness_probe: ReadinessProbe | None = None,
     ) -> None:
-        self._factory = factory or _default_factory(domain, api_key)
+        self._factory = factory or _default_factory(domain, api_key, image)
         self._readiness_probe = readiness_probe or _default_readiness(domain)
 
     async def open(
