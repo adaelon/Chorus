@@ -40,7 +40,7 @@ from .db.repo import (
     upsert_conversation,
 )
 from .execution_loop import build_execution_loop
-from .execution_mcp import McpSessionProvider, make_mcp_executor
+from .execution_mcp import McpRegistry, McpSessionProvider, make_mcp_executor
 from .execution_runtime import ToolExecutorGate, execution_sse, stream_with_heartbeat
 from .execution_sandbox import SandboxBackend, SessionStore, make_real_executor
 from .nodes.clarify import ClarifyFn
@@ -52,6 +52,7 @@ from .llm_astrbot import fetch_astrbot_bots, make_model_from_backend
 from .nodes.generate import GenerateFn, ModelProvider, PersonaProvider
 from .nodes.llm_plan import PlanStream
 from .nodes.plan import PlanFn
+from .nodes.plan_stream import default_plan_stream
 from .nodes.schedule import PickFn
 from .nodes.synthesize import ComposeFn
 from .recipes import (
@@ -468,9 +469,10 @@ def create_app(
     compose_produce: ComposeFn | None = None,  # S10a 出产物主笔（§6.21）；None=离线兜底
     recipe_selector: RecipeSelector | None = None,
     recipe_planner: RecipePlanner | None = None,
-    execution_stream: PlanStream | None = None,  # S12e：执行子图 planner LLM 流（窄 JSON intent）
+    execution_stream: PlanStream | None = None,  # S12e：执行子图 planner LLM 流（覆盖；测试注入假流）
+    plan_model=None,  # S13f.b：planner LLM——create_app 据此 + MCP 目录建真 plan_stream
     sandbox_backend: SandboxBackend | None = None,  # S12b/c：真沙箱后端（None→无沙箱执行）
-    mcp_session_provider: McpSessionProvider | None = None,  # S12d：MCP 连接 provider
+    mcp_session_provider: McpSessionProvider | None = None,  # S12d：单 MCP 连接（registry 空时兜底）
     execution_readiness_probe=None,  # 覆盖默认 sandbox_backend.readiness
     execution_checkpointer=None,  # S11f：执行子图 durable saver（None→开 execution_db_path）
     bridge_url: str = "http://127.0.0.1:9876",
@@ -493,17 +495,23 @@ def create_app(
         app.state.model_provider = mp
         app.state.reputation_adjuster = ra
 
-        def _make_execution_primitives():
-            # S13d：执行原语（plan_stream + gate + sandbox session store）——圆桌 turn 工具阶段
-            # 与 standalone /execution/run 共用一份。仅当配了 planner 流时启用（门控）。
-            if execution_stream is None:
+        async def _make_execution_primitives():
+            # S13d/f.b：执行原语（plan_stream + gate + sandbox session store）——圆桌 turn 工具阶段
+            # 与 standalone /execution/run 共用一份。门控：execution_stream（覆盖）或 plan_model 才启用。
+            if execution_stream is None and plan_model is None:
                 return None, None, None
+            # S13f.b：从 DB 建 MCP 注册表 → 工具目录（喂 planner）+ 按 tool_name 路由的 executor。
+            async with sf() as s:
+                specs = (await s.exec(select(McpServer))).all()
+            registry = McpRegistry(list(specs))
+            await registry.refresh()  # 连各 server list_tools（不可达 skip）；空表=无 MCP
+            if registry.catalog():
+                mcp_exec = registry.make_executor()
+            elif mcp_session_provider is not None:
+                mcp_exec = make_mcp_executor(mcp_session_provider)  # 单 provider 兜底（S12d）
+            else:
+                mcp_exec = None
             store = SessionStore(sandbox_backend) if sandbox_backend is not None else None
-            mcp_exec = (
-                make_mcp_executor(mcp_session_provider)
-                if mcp_session_provider is not None
-                else None
-            )
             inner = make_real_executor(
                 sandbox_backend=sandbox_backend,
                 sandbox_store=store,  # 有 store 则复用（S12c），优先于 per-call
@@ -513,7 +521,11 @@ def create_app(
             if probe is None and sandbox_backend is not None:
                 probe = sandbox_backend.readiness  # readiness 接 gate（S12c）→ down 走 S11d 降级边
             gate = ToolExecutorGate(inner, readiness_probe=probe)
-            return execution_stream, gate, store
+            # execution_stream（测试假流）覆盖；否则用 plan_model + MCP 目录建真 planner（S13f.b）。
+            plan_stream = execution_stream or default_plan_stream(
+                plan_model, tool_catalog=registry.catalog()
+            )
+            return plan_stream, gate, store
 
         def _build_graphs(saver, *, plan_stream=None, execute=None) -> None:
             # 两张配方图共享同一 checkpointer（不同 group_key 互不干扰）。
@@ -605,7 +617,7 @@ def create_app(
                     saver = await stack.enter_async_context(
                         AsyncSqliteSaver.from_conn_string(db_path)
                     )
-                plan_stream, gate, store = _make_execution_primitives()
+                plan_stream, gate, store = await _make_execution_primitives()
                 _build_graphs(saver, plan_stream=plan_stream, execute=gate)
                 await _build_execution_loop(stack, plan_stream, gate, store)
                 yield

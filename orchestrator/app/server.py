@@ -17,7 +17,6 @@ from .execution_opensandbox import OpenSandboxBackend
 from .llm import make_chat_model
 from .nodes.clarify import default_clarifier
 from .nodes.plan import default_planner
-from .nodes.plan_stream import default_plan_stream
 from .nodes.synthesize import default_composer, default_produce_composer
 from .recipes import default_recipe_planner, default_recipe_selector
 from .service import create_app
@@ -26,20 +25,21 @@ _model = make_chat_model()
 
 
 def _execution_kwargs() -> dict:
-    """S13d：配了 `CHORUS_SANDBOX_DOMAIN` → 开 execution（真 OpenSandbox + 真 planner 流）。
+    """开 execution：圆桌每个 AI 一轮可先用工具（沙箱跑代码 / MCP）再发言（§6.24，β/门控）。
 
-    全员可用：圆桌每个 AI 一轮可先用工具（沙箱跑代码）再发言（§6.24，β/门控）。
-    env 缺 → 不启用，圆桌纯发言照旧（单机/纯产品路径不依赖沙箱）。
+    `CHORUS_SANDBOX_DOMAIN` → 真 OpenSandbox 沙箱；`CHORUS_EXECUTION=1` → 仅 MCP（无沙箱）。
+    两者皆缺 → 不启用，圆桌纯发言照旧（单机/纯产品路径不依赖工具）。
+    plan_model 让 create_app 据 MCP 注册表（DB）建真 planner 流（工具目录 = 沙箱 + 各 MCP server）。
     """
     domain = os.getenv("CHORUS_SANDBOX_DOMAIN")
-    if not domain:
+    if not domain and os.getenv("CHORUS_EXECUTION") != "1":
         return {}
-    return {
-        "execution_stream": default_plan_stream(_model),
-        "sandbox_backend": OpenSandboxBackend(
+    kw: dict = {"plan_model": _model}  # S13f.b：create_app 据此 + MCP 目录建 plan_stream
+    if domain:
+        kw["sandbox_backend"] = OpenSandboxBackend(
             domain=domain, api_key=os.getenv("CHORUS_SANDBOX_API_KEY", "")
-        ),
-    }
+        )
+    return kw
 
 
 # extract/pick 不在此显式注入：节点默认懒构建真实 LLM（同 assign/generate）。

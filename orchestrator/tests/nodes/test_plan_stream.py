@@ -72,6 +72,19 @@ def test_scratchpad_renders_prior_command_and_result():
     assert "hi" in user
 
 
+def test_plan_prompt_lists_mcp_tools_from_catalog():
+    catalog = [{"name": "read_file", "description": "读取文件"}, {"name": "search", "description": "联网搜索"}]
+    system = _build_plan_messages(_state(), catalog)[0].content
+    assert "mcp_call" in system
+    assert "read_file" in system and "联网搜索" in system
+
+
+def test_plan_prompt_sandbox_only_without_catalog():
+    system = _build_plan_messages(_state())[0].content
+    assert "sandbox_exec" in system
+    assert "mcp_call" not in system  # 无 MCP server → 不提 mcp_call
+
+
 # --- robust parsing (reasoning prefix / fenced) -----------------------------
 
 
