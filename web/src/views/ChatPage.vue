@@ -308,52 +308,55 @@ const traceSteps = ref([])
 const traceSpeaker = ref('')
 const TOOL_STATUS_LABEL = { planning: '正在想用什么工具…', running: '正在跑工具…' }
 
-// 把 MCP 工具的 args 格式化成可读的"指令"字符串
-function formatArgs(tool_name, args) {
-  if (!args || !Object.keys(args).length) return ''
-  const a = args
-  if (tool_name === 'write_file') {
-    const preview = (a.content || '').slice(0, 120)
-    return `path: ${a.path}\ncontent: ${preview}${a.content?.length > 120 ? '…' : ''}`
+// 把 MCP 工具调用格式化成命令行风格的可读指令
+function formatInstruction(tool_name, args) {
+  const a = args || {}
+  const q = (s) => `"${s}"`
+  switch (tool_name) {
+    case 'list_allowed_directories': return 'list_allowed_directories()'
+    case 'read_file':       return `cat ${q(a.path)}`
+    case 'list_directory':  return `ls ${q(a.path)}`
+    case 'directory_tree':  return `tree ${q(a.path)}`
+    case 'get_file_info':   return `stat ${q(a.path)}`
+    case 'delete_file':     return `rm ${q(a.path)}`
+    case 'create_directory':return `mkdir ${q(a.path)}`
+    case 'move_file':       return `mv ${q(a.source)} ${q(a.destination)}`
+    case 'copy_file':       return `cp ${q(a.source)} ${q(a.destination)}`
+    case 'search_files':    return `find ${q(a.path)} -name ${q(a.pattern)}`
+    case 'web_search':      return `web_search ${q(a.query)}`
+    case 'fetch_url':       return `curl ${q(a.url)}`
+    case 'write_file': {
+      const body = (a.content || '').slice(0, 200)
+      const ellipsis = (a.content || '').length > 200 ? '\n…' : ''
+      return `write ${q(a.path)}\n---\n${body}${ellipsis}`
+    }
+    case 'edit_file': {
+      return `edit ${q(a.path)}`
+    }
+    default: {
+      // 通用兜底：tool_name("主要参数") 或 key=value 列表
+      const entries = Object.entries(a)
+      if (!entries.length) return `${tool_name}()`
+      return `${tool_name}(${entries.map(([k, v]) => {
+        const s = typeof v === 'string' ? q(v.slice(0, 100)) : JSON.stringify(v)
+        return `${k}=${s}`
+      }).join(', ')})`
+    }
   }
-  if (tool_name === 'read_file' || tool_name === 'create_directory' ||
-      tool_name === 'delete_file' || tool_name === 'list_directory' ||
-      tool_name === 'directory_tree' || tool_name === 'get_file_info') {
-    return `path: ${a.path}`
-  }
-  if (tool_name === 'move_file' || tool_name === 'copy_file') {
-    return `${a.source} → ${a.destination}`
-  }
-  if (tool_name === 'search_files') {
-    return `path: ${a.path}  pattern: ${a.pattern}`
-  }
-  if (tool_name === 'edit_file') {
-    return `path: ${a.path}`
-  }
-  if (tool_name === 'web_search') return `query: ${a.query}`
-  if (tool_name === 'fetch_url') return `url: ${a.url}`
-  if (tool_name === 'git_status' || tool_name === 'git_log' ||
-      tool_name === 'git_diff' || tool_name === 'git_commit') {
-    return Object.entries(a).map(([k, v]) => `${k}: ${v}`).join('\n')
-  }
-  // 通用兜底：key: value 每行一个
-  return Object.entries(a).map(([k, v]) => {
-    const s = typeof v === 'string' ? v : JSON.stringify(v)
-    return `${k}: ${s.slice(0, 200)}${s.length > 200 ? '…' : ''}`
-  }).join('\n')
 }
 
 // AgentStep（历史 trace，args.command）↔ 实时事件（command）形状归一
 const normStep = (s) => {
   const tool_name = s.tool_name
   const sandboxCmd = s.command ?? s.args?.command ?? ''
-  const mcpArgs = s.args && Object.keys(s.args).filter(k => k !== 'command').length
+  const mcpArgs = s.args
     ? Object.fromEntries(Object.entries(s.args).filter(([k]) => k !== 'command'))
-    : null
+    : {}
+  const isMcp = !sandboxCmd  // 有 sandbox command 就是沙箱步骤，否则是 MCP
   return {
     tool_name,
-    command: sandboxCmd,                          // sandbox 的 bash/python 代码
-    instruction: mcpArgs ? formatArgs(tool_name, mcpArgs) : '',  // MCP 的可读指令
+    command: sandboxCmd,
+    instruction: isMcp ? formatInstruction(tool_name, mcpArgs) : '',
     ok: s.ok,
     content: s.content,
     error: s.error,
