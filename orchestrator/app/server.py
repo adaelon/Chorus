@@ -37,10 +37,12 @@ def _execution_kwargs() -> dict:
         return {}
     kw: dict = {"plan_model": _model}  # S13f.b：create_app 据此 + MCP 目录建 plan_stream
     if domain:
+        from .execution_opensandbox import _DEFAULT_IMAGE
+        image = os.getenv("CHORUS_SANDBOX_IMAGE", _DEFAULT_IMAGE)
         kw["sandbox_backend"] = OpenSandboxBackend(
-            domain=domain, api_key=os.getenv("CHORUS_SANDBOX_API_KEY", "")
+            domain=domain, api_key=os.getenv("CHORUS_SANDBOX_API_KEY", ""), image=image
         )
-        print(f"[chorus] execution enabled — sandbox: {domain}, MCP: from DB registry")
+        print(f"[chorus] execution enabled — sandbox: {domain}, image: {image}, MCP: from DB registry")
     else:
         print("[chorus] execution enabled — MCP only (no sandbox)")
     return kw

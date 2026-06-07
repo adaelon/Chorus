@@ -134,8 +134,7 @@
             <div class="text-caption text-medium-emphasis">
               第 {{ i + 1 }} 步 · {{ s.tool_name }}
             </div>
-            <pre v-if="s.command" class="trace-pre cmd">{{ s.command }}</pre>
-            <pre v-if="s.args" class="trace-pre cmd">{{ JSON.stringify(s.args, null, 2) }}</pre>
+            <pre v-if="s.command || s.instruction" class="trace-pre cmd">{{ [s.command, s.instruction].filter(Boolean).join('\n') }}</pre>
             <div
               class="text-caption mt-1"
               :class="s.ok === false ? 'text-error' : 'text-success'"
@@ -308,15 +307,58 @@ const traceDialog = ref(false)
 const traceSteps = ref([])
 const traceSpeaker = ref('')
 const TOOL_STATUS_LABEL = { planning: '正在想用什么工具…', running: '正在跑工具…' }
+
+// 把 MCP 工具的 args 格式化成可读的"指令"字符串
+function formatArgs(tool_name, args) {
+  if (!args || !Object.keys(args).length) return ''
+  const a = args
+  if (tool_name === 'write_file') {
+    const preview = (a.content || '').slice(0, 120)
+    return `path: ${a.path}\ncontent: ${preview}${a.content?.length > 120 ? '…' : ''}`
+  }
+  if (tool_name === 'read_file' || tool_name === 'create_directory' ||
+      tool_name === 'delete_file' || tool_name === 'list_directory' ||
+      tool_name === 'directory_tree' || tool_name === 'get_file_info') {
+    return `path: ${a.path}`
+  }
+  if (tool_name === 'move_file' || tool_name === 'copy_file') {
+    return `${a.source} → ${a.destination}`
+  }
+  if (tool_name === 'search_files') {
+    return `path: ${a.path}  pattern: ${a.pattern}`
+  }
+  if (tool_name === 'edit_file') {
+    return `path: ${a.path}`
+  }
+  if (tool_name === 'web_search') return `query: ${a.query}`
+  if (tool_name === 'fetch_url') return `url: ${a.url}`
+  if (tool_name === 'git_status' || tool_name === 'git_log' ||
+      tool_name === 'git_diff' || tool_name === 'git_commit') {
+    return Object.entries(a).map(([k, v]) => `${k}: ${v}`).join('\n')
+  }
+  // 通用兜底：key: value 每行一个
+  return Object.entries(a).map(([k, v]) => {
+    const s = typeof v === 'string' ? v : JSON.stringify(v)
+    return `${k}: ${s.slice(0, 200)}${s.length > 200 ? '…' : ''}`
+  }).join('\n')
+}
+
 // AgentStep（历史 trace，args.command）↔ 实时事件（command）形状归一
-const normStep = (s) => ({
-  tool_name: s.tool_name,
-  command: s.command ?? s.args?.command ?? '',
-  args: s.args && Object.keys(s.args).length ? s.args : null,
-  ok: s.ok,
-  content: s.content,
-  error: s.error,
-})
+const normStep = (s) => {
+  const tool_name = s.tool_name
+  const sandboxCmd = s.command ?? s.args?.command ?? ''
+  const mcpArgs = s.args && Object.keys(s.args).filter(k => k !== 'command').length
+    ? Object.fromEntries(Object.entries(s.args).filter(([k]) => k !== 'command'))
+    : null
+  return {
+    tool_name,
+    command: sandboxCmd,                          // sandbox 的 bash/python 代码
+    instruction: mcpArgs ? formatArgs(tool_name, mcpArgs) : '',  // MCP 的可读指令
+    ok: s.ok,
+    content: s.content,
+    error: s.error,
+  }
+}
 function openTrace(m) {
   traceSteps.value = (m.toolSteps || []).map(normStep)
   traceSpeaker.value = m.sender_id
