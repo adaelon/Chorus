@@ -9,10 +9,11 @@
 from __future__ import annotations
 
 from langchain_openai import ChatOpenAI
+from langgraph.config import get_stream_writer
 
 from ..llm import make_chat_model
 from ..run_ctx import current_group_key
-from ..state import AgentSlot, GroupState, Msg
+from ..state import AgentSlot, GroupState, Msg, TurnTrace
 from ._common import request_text
 from .extract import ClaimExtractor, default_claim_extractor
 from .generate import GenerateFn, ModelProvider, PersonaProvider, default_generator
@@ -21,6 +22,22 @@ from .plan_stream import _render_scratchpad
 from .tool_dispatch import ToolExecutor, tool_dispatch
 
 _TERMINAL = ("degraded", "failed", "aborted")
+
+
+def _safe_writer():
+    """LangGraph custom stream writer，非流式上下文（节点级单测）下退化为 no-op。"""
+    try:
+        return get_stream_writer()
+    except RuntimeError:
+        return None
+
+
+def find_turn_trace(state: GroupState, speaker_id: str, turn: int) -> TurnTrace | None:
+    """按 (speaker, turn) 取回某轮工具化发言的执行 trace（S13c 检索；drill-in 用）。"""
+    for tr in reversed(state.turn_traces):
+        if tr.speaker_id == speaker_id and tr.turn == turn:
+            return tr
+    return None
 
 
 def _speaker_slot(state: GroupState) -> AgentSlot | None:
@@ -38,6 +55,8 @@ async def _run_tool_phase(
     state: GroupState,
     task: str,
     *,
+    speaker_id: str,
+    turn: int,
     plan_stream: PlanStream,
     execute: ToolExecutor,
     max_steps: int,
@@ -46,16 +65,36 @@ async def _run_tool_phase(
 
     在隔离 sub-state 上跑（同 group_key → SessionStore 复用沙箱），收集 `agent_steps`；
     **不**取 final 的答案——发言由后面的流式 `generate` 出（保 §6.11 流式/人设/claims）。
+    边跑边经 custom stream writer 实时 emit 执行子事件（带 speaker/turn 归属，S13c）。
     """
+    writer = _safe_writer()
+
+    def emit(kind: str, **fields) -> None:
+        if writer is not None:
+            writer({"kind": kind, "speaker_id": speaker_id, "turn": turn, **fields})
+
     sub = GroupState(
         group_key=state.group_key,
         history=[Msg(sender_id="user", sender_kind="human", text=task)],
     )
+    emit("tool_status", stage="planning")
     for _ in range(max_steps):
         sub = sub.model_copy(update=await llm_plan(sub, stream=plan_stream))
         if sub.output is not None or not sub.pending_tools:
             break  # planner 给了 final / 没要工具 → 停止用工具
+        intent = sub.pending_tools[0]
+        emit("tool_call", tool_name=intent.tool_name, command=intent.args.get("command", ""))
+        emit("tool_status", stage="running")
         sub = sub.model_copy(update=await tool_dispatch(sub, execute=execute))
+        result = sub.tool_results[-1] if sub.tool_results else None
+        if result is not None:
+            emit(
+                "tool_result",
+                tool_name=result.tool_name,
+                ok=result.ok,
+                content=(result.content or "")[:2000],
+                error=result.error.code if result.error else None,
+            )
         if sub.run_status in _TERMINAL:
             break  # 沙箱降级/失败/取消 → 带着已有结果去发言
     return sub
@@ -101,13 +140,31 @@ async def turn(
     if state.directed_active:
         # §6.20：真人点名（@）要这位按指令修改自己的发言——框定为定向修订，而非泛泛接话。
         request = f"真人点名要你按下面的指令修改你的发言（只针对你）：\n{request}"
+    turn_idx = state.turns_since_human + 1
     # S13b/§6.24：execution 启用（注入 plan_stream+execute）→ 先跑 ReAct 工具阶段（β），
     # 把工具发现拼进 request 喂给现有流式 generate；未注入=门控关、今天纯发言（A3）。
+    new_traces = None
     if plan_stream is not None and execute is not None:
         sub = await _run_tool_phase(
-            state, request, plan_stream=plan_stream, execute=execute, max_steps=max_tool_steps
+            state,
+            request,
+            speaker_id=slot.contact_id,
+            turn=turn_idx,
+            plan_stream=plan_stream,
+            execute=execute,
+            max_steps=max_tool_steps,
         )
         request = request + _tool_context(sub.agent_steps)
+        if sub.agent_steps:  # 真用了工具 → 这轮 trace 归 (speaker, turn) 存（S13c）
+            new_traces = [
+                *state.turn_traces,
+                TurnTrace(
+                    speaker_id=slot.contact_id,
+                    turn=turn_idx,
+                    steps=sub.agent_steps,
+                    trace=sub.trace_events,
+                ),
+            ]
     cand = await gen(slot, request, state.history, state.claims)
     msg = Msg(
         sender_id=slot.contact_id,
@@ -115,15 +172,17 @@ async def turn(
         text=cand.text,
         dimension=slot.dimension,
     )
-    turn_idx = state.turns_since_human + 1
     new_claims = await ext(cand.text, slot.contact_id, turn_idx)
     prior_claims = state.claims
     if state.directed_active:
         # §6.20 修订（S9b）：被@者按指令改了立场 → 其旧点过时，去重（偏该人最新一版）。
         # history 仍 append-only 留两版原文；点账本（合成/远场/主持人都读它）只留最新。
         prior_claims = [c for c in prior_claims if c.speaker_id != slot.contact_id]
-    return {
+    delta = {
         "history": [*state.history, msg],
         "turns_since_human": turn_idx,
         "claims": [*prior_claims, *new_claims],
     }
+    if new_traces is not None:
+        delta["turn_traces"] = new_traces
+    return delta

@@ -67,7 +67,22 @@ class Interrupt:
         return dict(self.payload)
 
 
-OutboundEvent = Delta | Framed | TurnDone | Output | Interrupt
+@dataclass
+class ToolEvent:
+    """工具化发言的执行子事件（S13c，§6.24）：tool_status / tool_call / tool_result，
+    带 speaker_id/turn 归属。由 turn 节点内的 custom stream writer emit。"""
+
+    payload: dict
+
+    def to_dict(self) -> dict:
+        d = dict(self.payload)
+        d["type"] = d.pop("kind")  # kind → SSE event type
+        return d
+
+
+OutboundEvent = Delta | Framed | TurnDone | Output | Interrupt | ToolEvent
+
+_TOOL_KINDS = ("tool_status", "tool_call", "tool_result")
 
 
 def _agent_id(meta: dict) -> str | None:
@@ -79,6 +94,11 @@ def _agent_id(meta: dict) -> str | None:
 
 def to_event(mode: str, payload) -> OutboundEvent | None:
     """纯映射：astream 的一个 (mode,payload) → 一个中性事件；不关心的返回 None。"""
+    if mode == "custom":
+        # turn 节点内工具阶段经 stream writer emit 的执行子事件（S13c）。
+        if isinstance(payload, dict) and payload.get("kind") in _TOOL_KINDS:
+            return ToolEvent(dict(payload))
+        return None
     if mode == "messages":
         chunk, meta = payload
         content = getattr(chunk, "content", "")
@@ -118,7 +138,7 @@ async def iter_events(graph, stream_input, cfg):
     处自然结束本段 astream（此时 `aget_state().next` 非空 = 暂停待续）。
     """
     async for mode, payload in graph.astream(
-        stream_input, cfg, stream_mode=["updates", "messages"]
+        stream_input, cfg, stream_mode=["updates", "messages", "custom"]
     ):
         ev = to_event(mode, payload)
         if ev is not None:

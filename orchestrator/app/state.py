@@ -114,6 +114,15 @@ class AgentStep(BaseModel):
     error: str | None = None
 
 
+class TurnTrace(BaseModel):
+    """一轮工具化发言的执行 trace，按 (speaker, turn) 归属（S13c，§6.24 抽屉/drill-in）。"""
+
+    speaker_id: str
+    turn: int
+    steps: list[AgentStep] = Field(default_factory=list)  # 这轮跑的工具+结果
+    trace: list[TraceEvent] = Field(default_factory=list)  # 节点级审计（llm_plan/tool_dispatch）
+
+
 class GroupState(BaseModel):
     """LangGraph 图的共享状态。配方(recipe)在其上演化。"""
 
@@ -141,5 +150,6 @@ class GroupState(BaseModel):
     pending_tools: list[ToolCallIntent] = Field(default_factory=list)
     tool_results: list[ToolResult] = Field(default_factory=list)
     agent_steps: list[AgentStep] = Field(default_factory=list)  # S13a planner scratchpad（§6.24）
+    turn_traces: list[TurnTrace] = Field(default_factory=list)  # S13c 工具化发言 trace（按 speaker,turn）
     sandbox_ready: bool | None = None
     last_tool_error: ToolRuntimeError | None = None

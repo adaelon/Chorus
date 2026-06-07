@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 
-from app.nodes.turn import turn
+from app.nodes.turn import find_turn_trace, turn
 from app.state import AgentSlot, Candidate, Claim, GroupState, Msg, ToolResult
 
 _TOOL = {
@@ -99,3 +99,34 @@ async def test_gating_without_execution_is_todays_behavior():
     assert box["request"] == "算 fib(10)"
     assert out["history"][-1].text == "speech"
     assert out["turns_since_human"] == 1
+    assert "turn_traces" not in out
+
+
+async def test_tool_enabled_turn_stores_trace_by_speaker_and_turn():
+    out = await turn(
+        _state(),
+        generate=_capture_gen({}),
+        extract=_ext,
+        plan_stream=_plan([_TOOL, _FINAL]),
+        execute=_exec_ok,
+    )
+    traces = out["turn_traces"]
+    assert len(traces) == 1
+    tr = traces[0]
+    assert tr.speaker_id == "A" and tr.turn == 1
+    assert tr.steps[0].args["command"]  # the command is retained
+    # retrieval helper
+    state2 = _state().model_copy(update={"turn_traces": traces})
+    assert find_turn_trace(state2, "A", 1) is tr
+    assert find_turn_trace(state2, "A", 99) is None
+
+
+async def test_no_tools_used_stores_no_trace():
+    out = await turn(
+        _state(),
+        generate=_capture_gen({}),
+        extract=_ext,
+        plan_stream=_plan([_FINAL]),  # planner uses no tools
+        execute=_exec_ok,
+    )
+    assert "turn_traces" not in out

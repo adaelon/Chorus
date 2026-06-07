@@ -649,10 +649,11 @@
 - 判据：`pytest`——配 fake execution（假 planner+FakeBackend）：tool 化 turn 跑工具→发言含 tool 结果上下文、claims 照常；**未配 execution：turn 行为与今天逐字节一致（现有 roundtable 测零改全绿，A3）**。
 - 落地：`turn` 加 `plan_stream`/`execute`/`max_tool_steps` 参 + `_run_tool_phase`（在隔离 sub-GroupState 上 plan⇄tool_dispatch，**同 group_key→SessionStore 复用沙箱**；到 planner `final`/无 pending_tools/降级 停；**β：弃 final.text**，只收 `agent_steps`）+ `_tool_context`（工具发现拼成发言 context，框"据此自然发言别罗列命令"，复用 `_render_scratchpad`）→ 拼进 `request` 喂**现有 `generate`**（流式/人设/claims 全不动）。门控：`plan_stream`/`execute` 任一 None→跳过工具阶段=今天纯发言。turn return 形状不变（history/turns/claims）。`tests/nodes/test_turn_execution.py`（3：工具化 turn 把结果喂进发言 prompt+claims 照常 / planner 不用工具→request 不增 / **未注入=今天逐字节一致**）；`.venv` 全量 **300 passed, 5 skipped**（A3 既有 roundtable/turn 零改）。**S13b 只动 turn 节点**；recipe_deps 串 plan_stream/execute + create_app 真值 = S13d。trace 仅在工具阶段算、本刀未持久化（S13c 按 (speaker,turn) 存+SSE）。
 
-**S13c trace 归属存储 + 圆桌 SSE 执行子事件**
+**S13c trace 归属存储 + 圆桌 SSE 执行子事件 ✅**
 - 做：执行 trace 按 (group_key, speaker, turn) 存（checkpointer/轻表）+ 检索；圆桌 `runtime.to_event`/SSE 增中性执行子事件（`tool_status`/`tool_call`/`tool_result`，带 speaker/turn 归属），不破现有 framed/delta/turn 事件。
 - 不做：前端渲染（S13e）。
 - 判据：`pytest`——工具化 turn 的 SSE 出执行子事件且按 speaker/turn 归属；trace 可按 (key,speaker,turn) 取回；非工具化 turn SSE 不变（A3）。
+- 落地：**实时子事件用 LangGraph custom stream**（工具阶段在 turn 节点内跑、外层 astream 看不到→需 stream writer）。`state.py` 加 `TurnTrace{speaker_id,turn,steps,trace}` + `GroupState.turn_traces`；`turn._run_tool_phase` 经 `get_stream_writer`（`_safe_writer` 包：非流式上下文 RuntimeError→no-op，保节点级单测）边跑边 emit `{kind:tool_status|tool_call|tool_result, speaker_id, turn, ...}`，并把本轮（真用了工具时）trace 归 (speaker,turn) append 进 `turn_traces`（进 checkpointer）+ `find_turn_trace` 检索；`transport/runtime.py` 加 `ToolEvent`（`to_dict`: kind→type）+ `to_event` 处理 `mode=="custom"`（仅 3 类 tool kind）+ `iter_events` stream_mode 加 `"custom"`。`tests/transport/test_tool_events.py`（3：custom 映射/忽略非 tool/**最小图 tool turn 经 iter_events 出带归属子事件**）+ `test_turn_execution.py`（+2：turn_traces 存+`find_turn_trace` 取回 / 无工具不存）；`.venv` 全量 **305 passed, 5 skipped**（A3：现有 roundtable_service/relay/event 零改——未启用 execution 无 custom 事件）。HTTP 检索端点 + 前端抽屉 = S13e。
 
 **S13d server.py 通电（真 model + 真沙箱 smoke）**
 - 做：`server.py` 读 env（`CHORUS_SANDBOX_DOMAIN/API_KEY`）→ `OpenSandboxBackend` + `default_plan_stream(model)` → 圆桌图配 execution 启用（全员可用）；env 缺→execution 不启用（纯发言，不报错）。
