@@ -33,12 +33,16 @@ def _execution_kwargs() -> dict:
     """
     domain = os.getenv("CHORUS_SANDBOX_DOMAIN")
     if not domain and os.getenv("CHORUS_EXECUTION") != "1":
+        print("[chorus] execution disabled — set CHORUS_SANDBOX_DOMAIN or CHORUS_EXECUTION=1 to enable")
         return {}
     kw: dict = {"plan_model": _model}  # S13f.b：create_app 据此 + MCP 目录建 plan_stream
     if domain:
         kw["sandbox_backend"] = OpenSandboxBackend(
             domain=domain, api_key=os.getenv("CHORUS_SANDBOX_API_KEY", "")
         )
+        print(f"[chorus] execution enabled — sandbox: {domain}, MCP: from DB registry")
+    else:
+        print("[chorus] execution enabled — MCP only (no sandbox)")
     return kw
 
 
