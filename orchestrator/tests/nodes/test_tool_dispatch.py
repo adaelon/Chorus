@@ -97,7 +97,7 @@ async def test_tool_dispatch_retries_retryable_error_then_succeeds():
 
     assert len(calls) == 2
     assert out["tool_results"][0].ok is True
-    assert out["retry_budget"].used_attempts == 2
+    assert out["retry_budget"].used_attempts == 0  # reset on success: next tool starts fresh
     assert "last_tool_error" not in out
 
 

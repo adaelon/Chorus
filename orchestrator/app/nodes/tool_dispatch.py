@@ -128,7 +128,7 @@ async def tool_dispatch(
                 "agent_steps": _agent_step(state, intent, result),
                 "retry_budget": RetryBudget(
                     max_attempts=budget.max_attempts,
-                    used_attempts=used_attempts,
+                    used_attempts=0,  # reset per-tool: each new tool starts fresh
                 ),
                 "sandbox_ready": True if intent.requires_sandbox else sandbox_ready,
                 "trace_events": _append_trace(
