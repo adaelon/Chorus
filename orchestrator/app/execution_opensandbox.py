@@ -52,7 +52,7 @@ def _default_readiness(domain: str) -> ReadinessProbe:
     async def probe() -> bool:
         from .execution_runtime import http_readiness_probe
 
-        return await http_readiness_probe(domain)
+        return await http_readiness_probe(f"http://{domain}/health")
 
     return probe
 
