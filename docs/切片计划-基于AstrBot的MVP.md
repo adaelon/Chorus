@@ -661,10 +661,11 @@
 - 判据：真 model + 真 opensandbox-server smoke（gated/录屏）：圆桌里某 AI 一轮"算 fib(10)"→写 python→跑→见 55→发言带结果；env 缺时圆桌纯发言照旧。
 - 落地：`recipes/roundtable.py:build_roundtable_recipe` 加 `plan_stream`/`execute` 参→进 deps（`compile_recipe` 按签名只注给 turn）；`service.py` lifespan 抽 `_make_execution_primitives`（建 `SessionStore`+`ToolExecutorGate(make_real_executor(...), readiness_probe=backend.readiness)`+plan_stream，**圆桌 turn 与 standalone loop 共用一份**）→ 在 `_build_graphs` 前算好、传进 roundtable_graph+relay_graph+`recipe_deps`（auto/自定义配方的 turn 也工具化）；`_build_execution_loop` 复用同 gate/store。`server.py` `_execution_kwargs()`：`CHORUS_SANDBOX_DOMAIN` 在→`OpenSandboxBackend`+`default_plan_stream(_model)`，缺→`{}`(纯发言)。`tests/service/test_roundtable_execution.py`（1 离线 e2e：配 execution→`/roundtable/stream` SSE 出 `tool_call`/`tool_result`(speaker=A,content="55")+仍出 turn+human_gate）；`.venv` 全量 **306 passed, 5 skipped**（A3：未配 execution 圆桌/relay/recipe_run 零改）。真 model+真 opensandbox 端到端=手动录屏（沙箱已 S12b smoke、planner 已 S13a smoke 各自覆盖）。
 
-**S13e ChatPage 实时执行进度 + "查看执行"抽屉**
+**S13e ChatPage 实时执行进度 + "查看执行"抽屉 ✅**
 - 做：ChatPage 接执行子事件——气泡内实时显"正在写代码/跑工具…"进度 + tool_call/result；AI 气泡旁"查看执行"→抽屉嵌 ExecutionPage（按 speaker/turn 拉 trace 或接 live）。
 - 不做：MCP 管理页（S13f）。
 - 判据：浏览器手动——圆桌里工具化 AI 发言时见实时执行进度，点开抽屉见完整 trace（时间线+工具卡）。
+- 落地（后端+前端）：后端 `get_conversation` 响应加 `turn_traces`（drill-in 一次 fetch 载全；history reload 用）。前端 `ChatPage.vue`：`streamPost` 按 type 自动分派→加 `tool_status`/`tool_call`/`tool_result` handler——`planning` 重置本轮 `currentToolSteps`、`tool_call` push 步、`tool_result` 填结果，全程刷 `status`（实时进度"运行：<command>"/"工具得到结果"）；`turn` 完成时把 `currentToolSteps` 挂到该气泡 `m.toolSteps`；气泡旁"🔧 查看执行（N 步）"按钮→`v-dialog` 抽屉渲染步骤时间线（命令卡+结果/出错）；history reload 把 `turn_traces` 按 speaker 顺序 best-effort 挂回 ai 气泡（`normStep` 归一 AgentStep.args.command ↔ 事件 command）。`tests/service/test_roundtable_execution.py`（+1：`/conversations/{key}` 出 turn_traces，speaker=A/turn=1/command 保留/content="55"）；`.venv` 全量 **307 passed, 5 skipped**；`npm run build` 过（722 模块）。浏览器手动验：工具化 AI 发言时见实时进度、点开抽屉见时间线。**S13 仅剩 S13f（MCP 工具注册表）**——sandbox code-interpreter 全链路（引擎→turn→trace/SSE→server→UI）打通。
 
 **S13f MCP 工具注册表（扩工具面，§S12d 待定）**
 - 做：`McpServer` 表（id,name,transport,command/args/url）+ CRUD；planner tool catalog = aggregate 各 server `list_tools()`；`mcp_session_provider` from registry；前端 MCP server 管理页。

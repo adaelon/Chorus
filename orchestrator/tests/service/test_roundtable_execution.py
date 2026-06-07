@@ -91,3 +91,19 @@ def test_roundtable_turn_streams_tool_subevents_then_speaks(tmp_path):
         # and still produced the speech + paused at human_gate (flow unchanged, β)
         assert '"type": "turn"' in body
         assert '"type": "human_gate"' in body
+
+
+def test_conversation_exposes_turn_traces_for_drill_in(tmp_path):
+    """S13e：工具化发言的 trace 按 (speaker,turn) 存，可经 /conversations/{key} 取回（抽屉用）。"""
+    with TestClient(_tool_app(tmp_path)) as client:
+        client.post(
+            "/roundtable/stream",
+            json={"group_key": "rtt", "request": "算 fib(10)", "roster": ["A", "B"]},
+        )
+        conv = client.get("/conversations/rtt").json()
+        traces = conv["turn_traces"]
+        assert len(traces) == 1
+        tr = traces[0]
+        assert tr["speaker_id"] == "A" and tr["turn"] == 1
+        assert tr["steps"][0]["args"]["command"]  # the command is retained
+        assert tr["steps"][0]["content"] == "55"

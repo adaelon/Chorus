@@ -1115,6 +1115,7 @@ def create_app(
             "history": vals.get("history", []),
             "output": vals.get("output"),
             "roster": vals.get("roster", []),
+            "turn_traces": vals.get("turn_traces", []),  # S13e：工具化发言的执行 trace（drill-in）
             "resumable": bool(snap.next),
         }
 

@@ -110,9 +110,47 @@
             </div>
           </template>
           <div v-else class="md-body" v-html="renderMd(m.text || '…')" />
+          <!-- S13e：这轮用了工具 → 可点开看执行 trace（时间线+工具卡）-->
+          <v-btn
+            v-if="m.toolSteps && m.toolSteps.length"
+            size="x-small"
+            variant="tonal"
+            color="primary"
+            class="mt-1"
+            @click="openTrace(m)"
+          >
+            🔧 查看执行（{{ m.toolSteps.length }} 步）
+          </v-btn>
         </div>
       </div>
     </div>
+
+    <!-- S13e：执行 trace 抽屉——某 AI 这轮的工具调用时间线（命令→结果）-->
+    <v-dialog v-model="traceDialog" max-width="720">
+      <v-card>
+        <v-card-title>执行 trace · {{ nameOf(traceSpeaker, 'ai') }}</v-card-title>
+        <v-card-text>
+          <div v-for="(s, i) in traceSteps" :key="i" class="trace-step">
+            <div class="text-caption text-medium-emphasis">
+              第 {{ i + 1 }} 步 · {{ s.tool_name }}
+            </div>
+            <pre class="trace-pre cmd">{{ s.command }}</pre>
+            <div
+              class="text-caption mt-1"
+              :class="s.ok === false ? 'text-error' : 'text-success'"
+            >
+              {{ s.ok === false ? '出错' : '结果' }}{{ s.error ? '：' + s.error : '' }}
+            </div>
+            <pre v-if="s.content" class="trace-pre out">{{ s.content }}</pre>
+          </div>
+          <div v-if="!traceSteps.length" class="text-medium-emphasis">（无执行步）</div>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="traceDialog = false">关闭</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <!-- 进度反馈：慢推理模型静默段（分配维度/发言者思考）显示，避免像卡死 -->
     <div v-if="loading && status" class="status-line mt-3">
@@ -263,6 +301,26 @@ const directedLabel = computed(() =>
 let current = null // 当前正在流式追加的 ai 气泡
 let pendingDirected = new Set() // 已 @ 但还没发言的目标 → 这几轮气泡标"应@修订"
 
+// S13e（§6.24）：工具化发言的执行 trace——本轮工具阶段实时累积 + "查看执行"抽屉。
+let currentToolSteps = [] // [{tool_name, command, ok, content, error}]（本轮工具阶段）
+const traceDialog = ref(false)
+const traceSteps = ref([])
+const traceSpeaker = ref('')
+const TOOL_STATUS_LABEL = { planning: '正在想用什么工具…', running: '正在跑工具…' }
+// AgentStep（历史 trace，args.command）↔ 实时事件（command）形状归一
+const normStep = (s) => ({
+  tool_name: s.tool_name,
+  command: s.command ?? s.args?.command ?? '',
+  ok: s.ok,
+  content: s.content,
+  error: s.error,
+})
+function openTrace(m) {
+  traceSteps.value = (m.toolSteps || []).map(normStep)
+  traceSpeaker.value = m.sender_id
+  traceDialog.value = true
+}
+
 const PALETTE = ['#1976D2', '#388E3C', '#D32F2F', '#7B1FA2', '#F57C00', '#0097A7']
 const avatarColor = (id) => PALETTE[hash(id) % PALETTE.length]
 const initial = (id) => (id ? String(id).slice(0, 2).toUpperCase() : '?')
@@ -302,6 +360,20 @@ async function loadConversation(key) {
     text: m.text,
     dimension: m.dimension,
   }))
+  // S13e：把存的执行 trace 挂回 ai 气泡（按 speaker 顺序 best-effort——history 不带 turn 号）。
+  const bySpeaker = {}
+  for (const t of c.turn_traces || []) (bySpeaker[t.speaker_id] ||= []).push(t)
+  const seen = {}
+  for (const m of messages.value) {
+    if (m.sender_kind !== 'ai') continue
+    const q = bySpeaker[m.sender_id]
+    if (!q) continue
+    const i = seen[m.sender_id] || 0
+    if (i < q.length) {
+      m.toolSteps = q[i].steps
+      seen[m.sender_id] = i + 1
+    }
+  }
   if (c.resumable) {
     // 未结束（停在让位窗口）→ 显示继续/插话/结束
     paused.value = true
@@ -360,19 +432,50 @@ const handlers = {
     }
     current.text += e.text
   },
+  // S13e：工具化 turn 的执行子事件——实时进度 + 累积本轮步骤（turn 完成时挂到气泡）。
+  tool_status: (e) => {
+    if (e.stage === 'planning') currentToolSteps = [] // 新一轮工具阶段开始
+    status.value = TOOL_STATUS_LABEL[e.stage] || '执行中…'
+  },
+  tool_call: (e) => {
+    currentToolSteps.push({
+      tool_name: e.tool_name,
+      command: e.command,
+      ok: null,
+      content: '',
+      error: null,
+    })
+    status.value = `运行：${e.command || e.tool_name}`
+  },
+  tool_result: (e) => {
+    const step = currentToolSteps[currentToolSteps.length - 1]
+    if (step) {
+      step.ok = e.ok
+      step.content = e.content
+      step.error = e.error
+    }
+    status.value = e.ok ? '工具得到结果' : `工具出错：${e.error || ''}`
+  },
   turn: (e) => {
     // 一轮发言完成：落权威文本（无 delta 的离线/快路径则在此建气泡）
+    let msg
     if (current && current.sender_id === e.contact_id) {
       current.text = e.text
       current.streaming = false
+      msg = current
     } else {
-      messages.value.push({
+      msg = {
         sender_id: e.contact_id,
         sender_kind: 'ai',
         text: e.text,
         dimension: e.dimension || dims.value[e.contact_id],
         directed: pendingDirected.has(e.contact_id),
-      })
+      }
+      messages.value.push(msg)
+    }
+    if (currentToolSteps.length) {
+      msg.toolSteps = currentToolSteps // S13e：本轮用了工具 → 挂到气泡供"查看执行"
+      currentToolSteps = []
     }
     pendingDirected.delete(e.contact_id) // 这位定向修订已完成
     current = null
@@ -555,5 +658,22 @@ const skipClarify = () =>
   background: rgba(127, 127, 127, 0.15);
   padding: 0.1em 0.3em;
   border-radius: 3px;
+}
+.trace-step {
+  border-left: 2px solid rgba(25, 118, 210, 0.5);
+  padding-left: 10px;
+  margin-bottom: 14px;
+}
+.trace-pre {
+  margin: 2px 0;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: rgba(127, 127, 127, 0.12);
+}
+.trace-pre.cmd {
+  background: rgba(25, 118, 210, 0.1);
 }
 </style>
