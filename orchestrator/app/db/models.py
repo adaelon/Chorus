@@ -97,6 +97,24 @@ class LLMBackend(SQLModel, table=True):
     created_at: float = Field(default_factory=time.time)
 
 
+class McpServer(SQLModel, table=True):
+    """MCP server 注册表（S13f，§6.24/§S12d）：圆桌 AI 工具面来源（沙箱之外的 MCP 工具）。
+
+    `transport=stdio` 用 `command`+`args` 起子进程；`=sse` 用 `url` 连 SSE server。
+    planner 目录 = aggregate 各 server `list_tools()`；调用走 S12d adapter（按 tool_name 路由）。
+    """
+
+    __tablename__ = "mcp_servers"
+
+    id: str = Field(primary_key=True)
+    name: str = ""
+    transport: str = "stdio"  # stdio | sse
+    command: str = ""  # transport=stdio：要起的命令（如 "python" / "npx"）
+    args: list[str] = Field(default_factory=list, sa_column=Column(JSON))  # stdio 命令参数
+    url: str = ""  # transport=sse：SSE server URL
+    created_at: float = Field(default_factory=time.time)
+
+
 class Recipe(SQLModel, table=True):
     """配方库（S5.4.2a，§6.16）：用户/内置的声明式 DAG（nodes/edges）。
 

@@ -29,7 +29,7 @@ from pydantic import BaseModel, Field
 from sqlmodel import select
 
 from .db.engine import init_models, make_engine, make_session_factory
-from .db.models import Contact, Conversation, LLMBackend, Recipe
+from .db.models import Contact, Conversation, LLMBackend, McpServer, Recipe
 from .db.repo import (
     bot_ref_provider_from,
     model_provider_from,
@@ -203,6 +203,17 @@ class RecipeAutoReq(BaseModel):
 
     task: str
     roster: list[str] = []
+
+
+class McpServerIn(BaseModel):
+    """MCP server 写入（S13f）：圆桌 AI 工具面来源（沙箱外的 MCP 工具）。"""
+
+    id: str
+    name: str = ""
+    transport: str = "stdio"  # stdio | sse
+    command: str = ""
+    args: list[str] = []
+    url: str = ""
 
 
 class ExecutionRunReq(BaseModel):
@@ -1135,5 +1146,43 @@ def create_app(
             except Exception:  # noqa: BLE001
                 pass
         return {"deleted": key}
+
+    # --- MCP server 注册表（S13f，§6.24/§S12d）：圆桌 AI 工具面来源 -------------
+    @app.get("/mcp-servers")
+    async def list_mcp_servers(request: Request):
+        async with request.app.state.session_factory() as s:
+            return (await s.exec(select(McpServer))).all()
+
+    @app.post("/mcp-servers")
+    async def create_mcp_server(m: McpServerIn, request: Request):
+        async with request.app.state.session_factory() as s:
+            if await s.get(McpServer, m.id) is not None:
+                raise HTTPException(status_code=409, detail=f"mcp server {m.id} exists")
+            obj = McpServer(**m.model_dump())
+            s.add(obj)
+            await s.commit()
+            return obj
+
+    @app.put("/mcp-servers/{mid}")
+    async def update_mcp_server(mid: str, m: McpServerIn, request: Request):
+        async with request.app.state.session_factory() as s:
+            obj = await s.get(McpServer, mid)
+            if obj is None:
+                raise HTTPException(status_code=404, detail=f"mcp server {mid} not found")
+            for k, v in m.model_dump(exclude={"id"}).items():
+                setattr(obj, k, v)
+            s.add(obj)
+            await s.commit()
+            return obj
+
+    @app.delete("/mcp-servers/{mid}")
+    async def delete_mcp_server(mid: str, request: Request):
+        async with request.app.state.session_factory() as s:
+            obj = await s.get(McpServer, mid)
+            if obj is None:
+                raise HTTPException(status_code=404, detail=f"mcp server {mid} not found")
+            await s.delete(obj)
+            await s.commit()
+            return {"deleted": mid}
 
     return app
