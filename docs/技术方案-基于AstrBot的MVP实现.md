@@ -485,6 +485,20 @@ ChannelDriver(adapter)  # 统一接口 send(group_key,account_ref,text)；AstrBo
 
 ---
 
+### §6.26 MCP 注册表热加载（CRUD 即生效，无需重启）
+
+**决策**：CRUD 后调 `McpRegistry.reload(specs)` 原地热更新；`plan_stream` 传方法引用（非快照列表）实时求值。
+
+**否决**：
+- 重建整个 gate/executor 对象：不必要——`make_executor()` 闭包在调用时读 `_tool_to_spec`，reload 后自动路由新工具。
+- 重建 McpRegistry 对象并重新传播到 gate/stream：三条传播链（gate.mcp_exec / plan_stream.catalog / app.state），改一处不如原地 reload。
+
+**命门**：`default_plan_stream` 的 `tool_catalog` 由快照列表改为 callable（`registry.catalog` 方法引用），每次 stream 调用时实时求值——与 `reload` 联动无需任何图重建。`app.state.mcp_registry` 是唯一引用，CRUD 端点通过它触发 reload。
+**何时回头**：多进程部署（每进程各有自己的内存 registry）——需 DB 变更事件 + pub/sub 跨进程同步。
+**展开**：切片 **S15**，见切片计划。
+
+---
+
 ## 7. MVP 落地顺序（每步独立可验）
 
 对应需求 §6 步骤 1-4，按"配方抽象"重排，**前端继承(§12)随产品域并入**。每片完成当场验证。

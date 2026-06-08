@@ -695,6 +695,16 @@
 
 ---
 
+## S15 MCP 注册表热加载（CRUD 即生效，§6.26）
+
+**S15 MCP 注册表热加载 ✅**
+- 做：`McpRegistry.reload(specs)` 原地热更新（替换 `_specs` + 重 `refresh()`）；`default_plan_stream` 的 `tool_catalog` 支持传 callable（方法引用，每次调用实时求值）；`app.state.mcp_registry` 挂 registry 引用；create/update/delete MCP server 端点 commit 后触发 `_reload_mcp_registry`。
+- 不做：重建 gate/executor（`make_executor()` 闭包已动态读 `_tool_to_spec`，reload 后自动路由）；多进程共享（单进程 MVP）。
+- 判据：`tests/service/test_mcp_servers.py::test_registry_reload_updates_catalog_and_routing` + `tests/nodes/test_plan_stream.py::test_plan_stream_callable_catalog_evaluated_per_call`；`.venv` 全量 **322 passed, 5 skipped**（A3）。
+- 落地：`execution_mcp.py:McpRegistry.reload`；`plan_stream.py:default_plan_stream(tool_catalog=callable)`；`service.py:_reload_mcp_registry` + 三 CRUD 端点 commit 后调用。详见代码链路 2026-06-08。
+
+---
+
 ## 依赖与执行顺序
 
 ```
