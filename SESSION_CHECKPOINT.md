@@ -2,15 +2,15 @@
 
 > 下一对话的**入口 + 热内存**。**单幅覆盖写、零累积**——每会话整页重写，不追加历史。
 > 本盘是【路由器 + 在途状态】，**不是架构本体**：架构看 `docs/`，本盘只回答「现在在哪 · 下一步做什么 · 哪些还没刷盘」。过期即弃。
-> 快照：2026-06-07 · 写于 HEAD `7394348`（trace 命令行风格指令）
+> 快照：2026-06-08 · 写于 HEAD `a98bf01`（落档 §6.26 + S15 决策与切片计划）
 
 ---
 
 ## ⏱️ 第一件事：新鲜度自检（30 秒）
 
 跑 `git log --oneline -1`：
-- **= `7394348`** → 本盘新鲜，照读下文。
-- **≠ `7394348`** → HEAD 已前移 → 以 git 为准：看 `git status -s` + `docs/代码链路.md` 尾部最近条目，重新理解现状后**重写本盘**。
+- **= `a98bf01`** → 本盘新鲜，照读下文。
+- **≠ `a98bf01`** → HEAD 已前移 → 以 git 为准：看 `git status -s` + `docs/代码链路.md` 尾部最近条目，重新理解现状后**重写本盘**。
 
 ---
 
@@ -29,7 +29,8 @@
 | 面 | 状态 | 说明 |
 |---|---|---|
 | **执行层 S11–S14** | 🟢 全线闭合 + 实测通过 | 沙箱/MCP/内置工具均已真实联调，Bug 全修 |
-| MVP 主线 S1–S14 | 🟢 基本完成 | 圆桌/扇出/多 bot/配方 L1–L4/历史重试/执行层全通 |
+| **S15 MCP 热加载** | 🟢 完成 | CRUD 后无需重启，已落档 §6.26 + 切片计划 |
+| MVP 主线 S1–S15 | 🟢 基本完成 | 圆桌/扇出/多 bot/配方 L1–L4/历史重试/执行层/MCP 热加载全通 |
 | **无在途切片** | ⚪ 待定方向 | 下一步是开放议题，非排队中的刀（见下） |
 | 子群/群递归 S5.6 | 🟡 设计中 | `docs/子群对话.md`（草稿未跟踪）；todo 第 2 条 |
 | 流式体感 bug | 🔴 待复现 | todo 第 1 条，与记忆 [[chorus-model-and-latency]] 冲突 |
@@ -40,17 +41,16 @@
 
 **本会话做了什么**：
 
-1. **补全执行层启动指南** `docs/启动指南.md §四`——OpenSandbox 安装/启动、MCP args 填法（每个预设单独示例，`command=npx` / `args=-y @modelcontextprotocol/server-filesystem C:\目录`），以及 `CHORUS_SANDBOX_DOMAIN=127.0.0.1:8080`（host:port，不带 `http://`）的沙箱域名格式。
+1. **S15 MCP 注册表热加载**：
+   - `execution_mcp.py:McpRegistry.reload(specs)` — 原地热更新（替换 `_specs` + 重 `refresh()`）
+   - `plan_stream.py:default_plan_stream` — `tool_catalog` 支持 callable，每次调用实时求值
+   - `service.py` — `app.state.mcp_registry` 挂 registry；CRUD 三端点 commit 后调 `_reload_mcp_registry`
+   - 新增测试 2 条；全量 **322 passed, 5 skipped**（A3 零回归）
 
-2. **修复实测四个 Bug**：
-   - `execution_opensandbox.py:_default_readiness` — probe URL 补 `http://` + `/health`（旧：裸 domain → `sandbox_unavailable`）
-   - `execution_opensandbox.py:_DEFAULT_IMAGE` — 默认镜像改 `latest`；`_default_factory` + `OpenSandboxBackend` 新增 `image` 参；`server.py` 读 `CHORUS_SANDBOX_IMAGE` env
-   - `execution_mcp.py` — `intent.args or {}` 非 `or None`（空 dict 是假值，MCP server 侧 `received undefined`）
-   - `tool_dispatch.py` — 成功路 `used_attempts=0` 重置（旧：累积→第二工具 while 不进→`tool_failed`）
-
-3. **trace 抽屉展示可读指令**：
-   - `turn.py:_run_tool_phase` emit `tool_call` 新增 `args` 字段
-   - `ChatPage.vue` — `formatInstruction(tool_name, args)` 按工具名出 shell 风格字符串（`cat "path"` / `write "path"\n---\ncontent` / `web_search "query"` / `list_allowed_directories()` / 通用兜底 `tool(k=v)`）；无参工具也有显示；一个 `<pre>` 块合并 sandbox 代码与 MCP 指令
+2. **落档**：
+   - `docs/代码链路.md` — 追加 2026-06-08 条目
+   - `docs/技术方案-基于AstrBot的MVP实现.md` — 新增 §6.26 决策
+   - `docs/切片计划-基于AstrBot的MVP.md` — 新增 S15 ✅
 
 **工作树**：干净，无未提交改动。仅剩三个未跟踪草稿（见下）。
 
