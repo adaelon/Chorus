@@ -119,3 +119,20 @@ async def test_registry_skips_unreachable_server():
     reg = McpRegistry([_Spec("down", ["x"])], provider_factory=bad_factory, include_builtins=False)
     await reg.refresh()  # must not raise
     assert reg.catalog() == []
+
+
+async def test_registry_reload_updates_catalog_and_routing():
+    """热加载：reload 后目录和路由都换成新 server，旧工具消失。"""
+    a = _Spec("srvA", ["tool_a"])
+    b = _Spec("srvB", ["tool_b"])
+    reg = McpRegistry([a], provider_factory=_factory, include_builtins=False)
+    await reg.refresh()
+    assert {t["name"] for t in reg.catalog()} == {"tool_a"}
+
+    # 热更新：换成 srvB
+    await reg.reload([b])
+    assert {t["name"] for t in reg.catalog()} == {"tool_b"}  # 旧工具消失
+    # executor 闭包读 _tool_to_spec，reload 后能路由到 tool_b
+    execute = reg.make_executor()
+    out = await execute(ToolCallIntent(call_id="c1", kind="mcp_call", tool_name="tool_b", args={}))
+    assert out.content == "tool_b@srvB"

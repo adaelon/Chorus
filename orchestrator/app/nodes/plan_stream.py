@@ -90,18 +90,20 @@ def _build_plan_messages(
 
 
 def default_plan_stream(
-    model, *, tool_catalog: list[dict] | None = None, has_sandbox: bool = True
+    model, *, tool_catalog=None, has_sandbox: bool = True
 ) -> PlanStream:
     """Real planner: build the ReAct prompt (sandbox + MCP/built-in tools), ask the model.
 
-    `tool_catalog` (from `McpRegistry.catalog()`) adds MCP/built-in tools so the
-    planner can emit `mcp_call`; `has_sandbox=False` drops sandbox_exec from the
-    prompt (built-in/MCP-only mode, no sandbox configured, S14a).
+    `tool_catalog` may be a `list[dict]` (static) or a callable `() -> list[dict]`
+    (e.g. `McpRegistry.catalog` bound method) evaluated fresh on every invocation,
+    so hot-reloading the registry is reflected without restarting the server.
+    `has_sandbox=False` drops sandbox_exec from the prompt (S14a).
     """
 
     async def stream(state: GroupState) -> AsyncIterable[str]:
+        catalog = tool_catalog() if callable(tool_catalog) else tool_catalog
         msg = await robust_ainvoke(
-            model, _build_plan_messages(state, tool_catalog, has_sandbox=has_sandbox)
+            model, _build_plan_messages(state, catalog, has_sandbox=has_sandbox)
         )
         yield str(msg.content or "")
 

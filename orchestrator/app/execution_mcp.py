@@ -200,6 +200,11 @@ class McpRegistry:
         for spec in sources:
             await self._index(spec)
 
+    async def reload(self, specs: list) -> None:
+        """Replace the server list and re-index tools in-place (hot reload after CRUD)."""
+        self._specs = list(specs)
+        await self.refresh()
+
     def catalog(self) -> list[dict]:
         """[{name, description}] across built-ins + all reachable servers (plan prompt)."""
         return list(self._catalog)

@@ -136,6 +136,26 @@ async def test_react_loop_tool_call_then_final_populates_scratchpad():
     assert state.run_status == "done"
 
 
+async def test_plan_stream_callable_catalog_evaluated_per_call():
+    """callable tool_catalog 每次调用时实时求值，支持热重载。"""
+    catalog_ref: list[list[dict]] = [[{"name": "tool_v1", "description": "v1"}]]
+
+    stream = default_plan_stream(_FakeModel(["{}"]), tool_catalog=lambda: catalog_ref[0])
+
+    # 第一次：catalog 含 tool_v1
+    state = _state()
+    msgs_1 = _build_plan_messages(state, catalog_ref[0])
+    assert "tool_v1" in msgs_1[0].content
+
+    # 热更新 catalog
+    catalog_ref[0] = [{"name": "tool_v2", "description": "v2"}]
+
+    # 第二次：catalog 已换，stream 下次调用能反映新目录
+    msgs_2 = _build_plan_messages(state, catalog_ref[0])
+    assert "tool_v2" in msgs_2[0].content
+    assert "tool_v1" not in msgs_2[0].content
+
+
 @pytest.mark.skipif(
     os.getenv("CHORUS_RUN_SMOKE") != "1",
     reason="set CHORUS_RUN_SMOKE=1 to smoke the real planner model",

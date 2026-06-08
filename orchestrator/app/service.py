@@ -499,12 +499,14 @@ def create_app(
             # S13d/f.b：执行原语（plan_stream + gate + sandbox session store）——圆桌 turn 工具阶段
             # 与 standalone /execution/run 共用一份。门控：execution_stream（覆盖）或 plan_model 才启用。
             if execution_stream is None and plan_model is None:
+                app.state.mcp_registry = None
                 return None, None, None
             # S13f.b：从 DB 建 MCP 注册表 → 工具目录（喂 planner）+ 按 tool_name 路由的 executor。
             async with sf() as s:
                 specs = (await s.exec(select(McpServer))).all()
             registry = McpRegistry(list(specs))
             await registry.refresh()  # 连各 server list_tools（不可达 skip）；空表=无 MCP
+            app.state.mcp_registry = registry  # 挂到 app.state 供 CRUD 端点热更新
             if registry.catalog():
                 mcp_exec = registry.make_executor()
             elif mcp_session_provider is not None:
@@ -522,10 +524,11 @@ def create_app(
                 probe = sandbox_backend.readiness  # readiness 接 gate（S12c）→ down 走 S11d 降级边
             gate = ToolExecutorGate(inner, readiness_probe=probe)
             # execution_stream（测试假流）覆盖；否则用 plan_model + 工具目录建真 planner。
-            # has_sandbox=False（无沙箱后端）时 prompt 不列 sandbox_exec（仅内置/MCP 工具，S14a）。
+            # tool_catalog 传 registry.catalog 方法引用（而非快照列表），每次调用时实时读最新目录，
+            # 支持 CRUD 后热重载（has_sandbox=False 时 prompt 不列 sandbox_exec，S14a）。
             plan_stream = execution_stream or default_plan_stream(
                 plan_model,
-                tool_catalog=registry.catalog(),
+                tool_catalog=registry.catalog,
                 has_sandbox=sandbox_backend is not None,
             )
             return plan_stream, gate, store
@@ -1163,6 +1166,16 @@ def create_app(
         return {"deleted": key}
 
     # --- MCP server 注册表（S13f，§6.24/§S12d）：圆桌 AI 工具面来源 -------------
+
+    async def _reload_mcp_registry(request: Request) -> None:
+        """CRUD 后热更新内存中的 McpRegistry（不重启进程）。"""
+        reg = getattr(request.app.state, "mcp_registry", None)
+        if reg is None:
+            return
+        async with request.app.state.session_factory() as s:
+            specs = (await s.exec(select(McpServer))).all()
+        await reg.reload(list(specs))
+
     @app.get("/mcp-servers")
     async def list_mcp_servers(request: Request):
         async with request.app.state.session_factory() as s:
@@ -1176,7 +1189,8 @@ def create_app(
             obj = McpServer(**m.model_dump())
             s.add(obj)
             await s.commit()
-            return obj
+        await _reload_mcp_registry(request)
+        return obj
 
     @app.put("/mcp-servers/{mid}")
     async def update_mcp_server(mid: str, m: McpServerIn, request: Request):
@@ -1188,7 +1202,8 @@ def create_app(
                 setattr(obj, k, v)
             s.add(obj)
             await s.commit()
-            return obj
+        await _reload_mcp_registry(request)
+        return obj
 
     @app.delete("/mcp-servers/{mid}")
     async def delete_mcp_server(mid: str, request: Request):
@@ -1198,6 +1213,7 @@ def create_app(
                 raise HTTPException(status_code=404, detail=f"mcp server {mid} not found")
             await s.delete(obj)
             await s.commit()
-            return {"deleted": mid}
+        await _reload_mcp_registry(request)
+        return {"deleted": mid}
 
     return app
