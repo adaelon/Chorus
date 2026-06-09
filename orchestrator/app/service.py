@@ -52,7 +52,7 @@ from .llm_astrbot import fetch_astrbot_bots, make_model_from_backend
 from .nodes.generate import GenerateFn, ModelProvider, PersonaProvider
 from .nodes.llm_plan import PlanStream
 from .nodes.plan import PlanFn
-from .nodes.plan_stream import default_plan_stream
+from .nodes.plan_stream import ToolGate, default_plan_stream, default_tool_gate
 from .nodes.schedule import PickFn
 from .nodes.synthesize import ComposeFn
 from .recipes import (
@@ -471,6 +471,7 @@ def create_app(
     recipe_planner: RecipePlanner | None = None,
     execution_stream: PlanStream | None = None,  # S12e：执行子图 planner LLM 流（覆盖；测试注入假流）
     plan_model=None,  # S13f.b：planner LLM——create_app 据此 + MCP 目录建真 plan_stream
+    tool_gate: ToolGate | None = None,  # S16b：准入门（覆盖；缺则用 plan_model 建 default_tool_gate）
     sandbox_backend: SandboxBackend | None = None,  # S12b/c：真沙箱后端（None→无沙箱执行）
     mcp_session_provider: McpSessionProvider | None = None,  # S12d：单 MCP 连接（registry 空时兜底）
     execution_readiness_probe=None,  # 覆盖默认 sandbox_backend.readiness
@@ -500,7 +501,7 @@ def create_app(
             # 与 standalone /execution/run 共用一份。门控：execution_stream（覆盖）或 plan_model 才启用。
             if execution_stream is None and plan_model is None:
                 app.state.mcp_registry = None
-                return None, None, None
+                return None, None, None, None
             # S13f.b：从 DB 建 MCP 注册表 → 工具目录（喂 planner）+ 按 tool_name 路由的 executor。
             async with sf() as s:
                 specs = (await s.exec(select(McpServer))).all()
@@ -531,9 +532,11 @@ def create_app(
                 tool_catalog=registry.catalog,
                 has_sandbox=sandbox_backend is not None,
             )
-            return plan_stream, gate, store
+            # S16b/§6.27 A：准入门——覆盖优先，否则有 plan_model 就建廉价 gate（None=不判、turn 总跑工具）
+            tgate = tool_gate or (default_tool_gate(plan_model) if plan_model is not None else None)
+            return plan_stream, gate, store, tgate
 
-        def _build_graphs(saver, *, plan_stream=None, execute=None) -> None:
+        def _build_graphs(saver, *, plan_stream=None, execute=None, tool_gate=None) -> None:
             # 两张配方图共享同一 checkpointer（不同 group_key 互不干扰）。
             app.state.graph = build_fanout_recipe(
                 saver,
@@ -558,6 +561,7 @@ def create_app(
                 compose=compose,
                 plan_stream=plan_stream,
                 execute=execute,
+                tool_gate=tool_gate,
                 human_in_loop=True,
             )
             # S4.4：telegram 驱动器——入站起圆桌、后台多轮、出站经桥推回群。
@@ -574,6 +578,7 @@ def create_app(
                 compose=compose,
                 plan_stream=plan_stream,
                 execute=execute,
+                tool_gate=tool_gate,
                 human_in_loop=True,
             )
             outbound = OutboundClient(bridge_url, bot_ref_provider_from(sf))
@@ -596,6 +601,7 @@ def create_app(
                 "assess": clarify_assess,
                 "plan_stream": plan_stream,  # S13d：自定义/auto 配方的 turn 也工具化
                 "execute": execute,
+                "tool_gate": tool_gate,  # S16b：自定义/auto 配方的 turn 也过准入门
             }
 
         async def _build_execution_loop(stack, plan_stream, gate, store) -> None:
@@ -623,8 +629,8 @@ def create_app(
                     saver = await stack.enter_async_context(
                         AsyncSqliteSaver.from_conn_string(db_path)
                     )
-                plan_stream, gate, store = await _make_execution_primitives()
-                _build_graphs(saver, plan_stream=plan_stream, execute=gate)
+                plan_stream, gate, store, tgate = await _make_execution_primitives()
+                _build_graphs(saver, plan_stream=plan_stream, execute=gate, tool_gate=tgate)
                 await _build_execution_loop(stack, plan_stream, gate, store)
                 yield
         finally:

@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import json
+
 from langchain_openai import ChatOpenAI
 from langgraph.config import get_stream_writer
 
@@ -18,7 +20,7 @@ from ._common import request_text
 from .extract import ClaimExtractor, default_claim_extractor
 from .generate import GenerateFn, ModelProvider, PersonaProvider, default_generator
 from .llm_plan import PlanStream, llm_plan
-from .plan_stream import _render_scratchpad
+from .plan_stream import ToolGate, _render_scratchpad
 from .tool_dispatch import ToolExecutor, tool_dispatch
 
 _TERMINAL = ("degraded", "failed", "aborted")
@@ -78,11 +80,17 @@ async def _run_tool_phase(
         history=[Msg(sender_id="user", sender_kind="human", text=task)],
     )
     emit("tool_status", stage="planning")
+    seen: set[tuple[str, str]] = set()  # 已执行过的 (tool_name, args) 签名，挡原地打转（S16a/§6.27 C）
     for _ in range(max_steps):
         sub = sub.model_copy(update=await llm_plan(sub, stream=plan_stream))
         if sub.output is not None or not sub.pending_tools:
             break  # planner 给了 final / 没要工具 → 停止用工具
         intent = sub.pending_tools[0]
+        sig = (intent.tool_name, json.dumps(intent.args or {}, sort_keys=True, default=str))
+        if sig in seen:
+            emit("tool_status", stage="duplicate")  # 同工具+参数已调过 → 停，不再空转
+            break
+        seen.add(sig)
         emit("tool_call", tool_name=intent.tool_name,
              command=intent.args.get("command", ""),
              args={k: v for k, v in intent.args.items() if k != "command"} if intent.args else {})
@@ -122,6 +130,7 @@ async def turn(
     extract: ClaimExtractor | None = None,
     plan_stream: PlanStream | None = None,  # S13b 门控：注入即工具化 turn（§6.24）
     execute: ToolExecutor | None = None,
+    tool_gate: ToolGate | None = None,  # S16b 准入门：注入则先判"需不需要工具"，不需→跳工具阶段（§6.27 A）
     max_tool_steps: int = 6,
 ) -> dict:
     """让 `next_speaker` 发一次言，追加进 history，turns_since_human += 1，并中立提点入账本。
@@ -146,7 +155,12 @@ async def turn(
     # S13b/§6.24：execution 启用（注入 plan_stream+execute）→ 先跑 ReAct 工具阶段（β），
     # 把工具发现拼进 request 喂给现有流式 generate；未注入=门控关、今天纯发言（A3）。
     new_traces = None
-    if plan_stream is not None and execute is not None:
+    # S16b/§6.27 A：准入门——注入了 tool_gate 则先判"这轮需不需要工具"，不需→跳过工具阶段
+    # 直接走流式发言（治本，纯聊不空转）；未注入=不判、行为同 S16a（工具阶段总跑）。
+    run_tools = plan_stream is not None and execute is not None
+    if run_tools and tool_gate is not None:
+        run_tools = await tool_gate(state)
+    if run_tools:
         sub = await _run_tool_phase(
             state,
             request,

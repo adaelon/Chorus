@@ -705,6 +705,31 @@
 
 ---
 
+## S16 圆桌工具阶段准入门 + scratchpad 修复（修空转 bug，§6.27）
+
+> 背景（实测 bug）：圆桌问与工具无关的问题，每个 AI 发言前空转 6 步反复 `list_allowed_directories`/`list_directory`。三根因：§6.24 β 每 turn 无条件跑 ReAct（→ A 治本）+ planner 偏用工具（→ B 补强）+ scratchpad 对 MCP 渲染坏导致看不出已调过（→ C 硬 bug）。拆两刀：**S16a 防空转+可读（离线确定）→ S16b 准入门（不需就不跑，LLM gate + wiring + 真模型验）**。
+
+**S16a scratchpad 修复 + 循环去重 + 提示词出口（C+B，离线）✅**
+- 做：
+  - **C scratchpad 修复**：`plan_stream._render_scratchpad` 用 `step.tool_name` + 真实 args（非硬编码 `sandbox_exec command=`，MCP 调用要渲出 tool_name+path）。
+  - **C 循环去重**：`turn._run_tool_phase` 循环挡重复 intent（同 `tool_name`+`args` 已出现过 → 停，不再原地打转）。
+  - **B 提示词出口**：`plan_stream._plan_system`/`_PLAN_FINAL` 加"不需工具就直接 final、勿为探索而探索"。
+- 不做：准入门（S16b）；§6.24 β 整体重构（α=final 当答案）。
+- 判据（red-green，先写复现失败测试）：①`_render_scratchpad` 对 MCP 步渲出真 `tool_name`+args（非 `sandbox_exec command=''`）；②重复 intent 被挡（连续同 `tool_name`+`args` 不再出现）；③`_plan_system` 含"不需工具直接 final"出口；④`.venv` 全量 pytest 仍绿（A3 既有零回归）。
+
+**S16b 工具阶段 LLM 准入门（A，治本 + wiring + smoke）✅**
+- 做：
+  - 新增廉价单一职责 gate：`(GroupState)->bool`「这轮需不需要工具」——单目的 yes/no prompt（比满载 planner 可靠），可注入快模型。无可用工具时直接短路 False（省调用）。
+  - `turn`：`_run_tool_phase` 前先过 gate，False → 跳过工具阶段直接流式发言；gate 像 `plan_stream`/`execute` 一样门控（未注入=不判、行为同 S16a）。
+  - wiring：`service.create_app`/`_make_execution_primitives` + `server.py` 注入 gate model（复用 `plan_model`）→ 串进圆桌 turn。
+- 不做：纯启发式 gate（§6.27 否决）；gate 判定缓存（误判频发再加，§6.27「何时回头」）。
+- 判据：①离线——纯聊问题 + 含 filesystem 工具 catalog + 假 gate 返 False → 工具阶段不产生 tool_call、直接发言；假 gate 返 True → 仍跑工具（门控两侧）；②`.venv` 全量 pytest 仍绿（A3）；③**真模型验证（B2）**：gated smoke 或手动复现原 bug——真 kimi 问无关问题不再 list 空转（离线测只证机械事实，证不了真模型行为）。
+- 落地：`plan_stream.py:default_tool_gate`；`turn.py:turn(tool_gate=)`；`recipes/roundtable.py`（deps 加 tool_gate）；`service.py:create_app(tool_gate=)`/`_make_execution_primitives`(4 元组)/`_build_graphs`；server.py 零改（gate 从 plan_model 自动建）。判据①②达成（330 passed, 5 skipped），③留真模型 smoke/手动（gated `test_smoke_real_tool_gate_skips_chat`）。详见代码链路 2026-06-09。
+
+> **S16（a+b）完成** ✅：圆桌纯聊不再空转调工具。a=scratchpad 修复+去重+提示词（跑起来不空转）；b=LLM 准入门（不需就不跑，治本）。**剩真模型 smoke/手动复现**验证真 kimi 行为。
+
+---
+
 ## 依赖与执行顺序
 
 ```

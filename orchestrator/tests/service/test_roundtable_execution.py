@@ -123,6 +123,35 @@ def test_plan_model_enables_execution_with_no_tools_just_speaks(tmp_path):
         assert '"type": "tool_call"' not in body  # 无工具 → planner 直 final，无工具事件
 
 
+def test_tool_gate_skips_tool_phase_end_to_end(tmp_path):
+    """S16b/§6.27 A：create_app 注入准入门(返 False)→ 即便 planner 想用工具，圆桌 turn 跳过工具阶段、纯发言。"""
+
+    async def gate_no(_state):
+        return False
+
+    app = create_app(
+        checkpointer=MemorySaver(),
+        execution_checkpointer=MemorySaver(),
+        assign=_fake_assign,
+        generate=_fake_gen,
+        extract=_fake_extract,
+        pick=_round_robin(),
+        execution_stream=_plan([_TOOL, _FINAL]),  # planner 想用工具
+        sandbox_backend=FakeBackend(stdout="55"),
+        tool_gate=gate_no,  # 但准入门判定"不需要"
+        registry_db_path=str(tmp_path / "reg.sqlite"),
+    )
+    with TestClient(app) as client:
+        r = client.post(
+            "/roundtable/stream",
+            json={"group_key": "rtg", "request": "闲聊一下", "roster": ["A", "B"]},
+        )
+        assert r.status_code == 200
+        body = r.text
+        assert '"type": "turn"' in body  # 仍正常发言
+        assert '"type": "tool_call"' not in body  # 准入门跳过 → 无工具事件
+
+
 def test_conversation_exposes_turn_traces_for_drill_in(tmp_path):
     """S13e：工具化发言的 trace 按 (speaker,turn) 存，可经 /conversations/{key} 取回（抽屉用）。"""
     with TestClient(_tool_app(tmp_path)) as client:

@@ -72,6 +72,23 @@ def test_scratchpad_renders_prior_command_and_result():
     assert "hi" in user
 
 
+def test_scratchpad_renders_mcp_tool_name_and_args():
+    """MCP 步渲出真 tool_name + args(path)，不再硬编码 sandbox_exec command=''（S16a/§6.27 C）。"""
+    state = _state(
+        agent_steps=[AgentStep(tool_name="list_directory", args={"path": "/srv/data"}, content="[DIR] .claude")]
+    )
+    user = _build_plan_messages(state)[1].content
+    assert "list_directory" in user
+    assert "/srv/data" in user
+    assert "sandbox_exec" not in user  # 不再硬编码 sandbox_exec（让 planner 看清是哪个工具/路径）
+
+
+def test_plan_prompt_has_no_tool_exit_hint():
+    """提示词给出"不需工具就直接 final"的出口（S16a/§6.27 B）。"""
+    system = _build_plan_messages(_state())[0].content
+    assert "不需要任何工具" in system
+
+
 def test_plan_prompt_lists_mcp_tools_from_catalog():
     catalog = [{"name": "read_file", "description": "读取文件"}, {"name": "search", "description": "联网搜索"}]
     system = _build_plan_messages(_state(), catalog)[0].content
@@ -156,6 +173,27 @@ async def test_plan_stream_callable_catalog_evaluated_per_call():
     assert "tool_v1" not in msgs_2[0].content
 
 
+# --- 准入门 default_tool_gate（S16b/§6.27 A）----------------------------------
+
+
+async def test_default_tool_gate_parses_yes_no():
+    """明确"不需要"→ False（跳工具）；"需要"→ True（跑工具）。"""
+    from app.nodes.plan_stream import default_tool_gate
+
+    no_gate = default_tool_gate(_FakeModel(["不需要"]))
+    yes_gate = default_tool_gate(_FakeModel(["需要"]))
+    assert await no_gate(_state("今天心情如何")) is False
+    assert await yes_gate(_state("读取 config.json 看看")) is True
+
+
+async def test_default_tool_gate_defaults_true_on_ambiguous():
+    """模糊/无法解析 → 保守 True（仍跑工具，空转由 S16a 兜底）。"""
+    from app.nodes.plan_stream import default_tool_gate
+
+    gate = default_tool_gate(_FakeModel(["嗯，这个问题嘛……"]))
+    assert await gate(_state("随便聊聊")) is True
+
+
 @pytest.mark.skipif(
     os.getenv("CHORUS_RUN_SMOKE") != "1",
     reason="set CHORUS_RUN_SMOKE=1 to smoke the real planner model",
@@ -167,3 +205,16 @@ async def test_smoke_real_model_emits_valid_payload():
     out = "".join([chunk async for chunk in stream(_state("用 python 算 2 的 10 次方"))])
     payload = _parse_payload(out)  # must be a valid tool_call or final
     assert payload.kind in ("tool_call", "final")
+
+
+@pytest.mark.skipif(
+    os.getenv("CHORUS_RUN_SMOKE") != "1",
+    reason="set CHORUS_RUN_SMOKE=1 to smoke the real tool gate",
+)
+async def test_smoke_real_tool_gate_skips_chat():
+    """真模型准入门：明显的闲聊问题应判"不需要工具"（§6.27 A 的真值锚，B2）。"""
+    from app.llm import make_chat_model
+    from app.nodes.plan_stream import default_tool_gate
+
+    gate = default_tool_gate(make_chat_model())
+    assert await gate(_state("你今天心情怎么样？")) is False

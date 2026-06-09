@@ -499,6 +499,21 @@ ChannelDriver(adapter)  # 统一接口 send(group_key,account_ref,text)；AstrBo
 
 ---
 
+### §6.27 工具阶段准入门（纯聊不空转工具）
+
+**决策**：工具阶段加廉价"需不需要工具"准入门——默认纯聊直接发言，不触发 ReAct 工具循环。
+
+**否决**：
+- 维持每 turn 强制跑 ReAct（§6.24 β 原状）：纯聊问题被反复空转调 filesystem 工具（实测 bug：6 步全在 list 同一目录）。
+- 只靠提示词劝退：reasoning 模型见工具反射性"先探一探"，不可靠——B 仅作补强、不作主防。
+- 加大 `max_tool_steps` / 删 MCP 工具：治标且削功能。
+
+**命门**：三处正交、拆两刀——①准入门（A，治本：工具阶段不再无条件触发；用**廉价独立单一职责 LLM 判定**「这轮需不需要工具」——单目的 yes/no prompt 比满载 planner 可靠，turn 像 plan_stream 那样注入 gate model 门控；**不**塌缩进 B 的"靠 planner 首步 final"，否则 A=B 即失可靠性）；②scratchpad 修复（C，硬 bug：`_render_scratchpad` 原硬编码 `sandbox_exec command=`，对 MCP 调用渲成 `command='' -> ok`，planner 看不出已调过 → 原地打转；改用真 `tool_name`+真 args，并在循环挡重复 intent）；③提示词出口（B，补强：加"不需工具就直接 final、勿为探索而探索"）。
+**何时回头**：gate 误判（该用工具却跳过）频发 → 收紧/放宽 gate prompt，或前置启发式短路省调用；gate 每发言人一调的成本/延迟过重 → 缓存同 (group_key,question) 判定；或 §6.24 β 整体重审（final 当答案的 α）。
+**展开**：切片 **S16a**（C+B：scratchpad 修复+去重+提示词，离线）/ **S16b**（A：LLM 准入门 + wiring + 真模型 smoke），见切片计划。
+
+---
+
 ## 7. MVP 落地顺序（每步独立可验）
 
 对应需求 §6 步骤 1-4，按"配方抽象"重排，**前端继承(§12)随产品域并入**。每片完成当场验证。

@@ -121,6 +121,58 @@ async def test_tool_enabled_turn_stores_trace_by_speaker_and_turn():
     assert find_turn_trace(state2, "A", 99) is None
 
 
+async def test_repeated_intent_stops_tool_phase():
+    """planner 反复发同一个 tool_call → 去重挡住，工具阶段停止，不空转到 max_tool_steps（S16a/§6.27 C）。"""
+    out = await turn(
+        _state(),
+        generate=_capture_gen({}),
+        extract=_ext,
+        plan_stream=_plan([_TOOL]),  # 永远发同一个 _TOOL、从不 final（模拟原地打转）
+        execute=_exec_ok,
+        max_tool_steps=6,
+    )
+    # 去重：同 (tool_name, args) 只执行一次，而非 6 次空转
+    tr = out["turn_traces"][0]
+    assert len(tr.steps) == 1
+
+
+async def test_tool_gate_false_skips_tool_phase():
+    """准入门返回 False（不需要工具）→ 跳过工具阶段，request 不增、无 trace（S16b/§6.27 A）。"""
+    box: dict = {}
+
+    async def gate_no(_state):
+        return False
+
+    out = await turn(
+        _state(),
+        generate=_capture_gen(box),
+        extract=_ext,
+        plan_stream=_plan([_TOOL, _FINAL]),  # 即便 planner 想用工具
+        execute=_exec_ok,
+        tool_gate=gate_no,
+    )
+    assert box["request"] == "算 fib(10)"  # 纯议题，没跑工具阶段
+    assert "turn_traces" not in out
+
+
+async def test_tool_gate_true_runs_tool_phase():
+    """准入门返回 True → 仍跑工具阶段（门控另一侧，S16b）。"""
+    box: dict = {}
+
+    async def gate_yes(_state):
+        return True
+
+    await turn(
+        _state(),
+        generate=_capture_gen(box),
+        extract=_ext,
+        plan_stream=_plan([_TOOL, _FINAL]),
+        execute=_exec_ok,
+        tool_gate=gate_yes,
+    )
+    assert "55" in box["request"]  # 工具结果进了发言 prompt
+
+
 async def test_no_tools_used_stores_no_trace():
     out = await turn(
         _state(),
