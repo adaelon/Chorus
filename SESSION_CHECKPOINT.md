@@ -2,15 +2,15 @@
 
 > 下一对话的**入口 + 热内存**。**单幅覆盖写、零累积**——每会话整页重写，不追加历史。
 > 本盘是【路由器 + 在途状态】，**不是架构本体**：架构看 `docs/`，本盘只回答「现在在哪 · 下一步做什么 · 哪些还没刷盘」。过期即弃。
-> 快照：2026-06-08 · 写于 HEAD `a98bf01`（落档 §6.26 + S15 决策与切片计划）
+> 快照：2026-06-09 · 写于 HEAD `a52e1cf`（fix: 圆桌纯聊不再空转调工具 S16 a+b §6.27）
 
 ---
 
 ## ⏱️ 第一件事：新鲜度自检（30 秒）
 
 跑 `git log --oneline -1`：
-- **= `a98bf01`** → 本盘新鲜，照读下文。
-- **≠ `a98bf01`** → HEAD 已前移 → 以 git 为准：看 `git status -s` + `docs/代码链路.md` 尾部最近条目，重新理解现状后**重写本盘**。
+- **= `a52e1cf`**（或其后只多一条 checkpoint 刷新 commit）→ 本盘新鲜，照读下文。
+- **≠ 上述** → HEAD 已前移 → 以 git 为准：看 `git status -s` + `docs/代码链路.md` 尾部最近条目，重新理解现状后**重写本盘**。
 
 ---
 
@@ -28,10 +28,10 @@
 
 | 面 | 状态 | 说明 |
 |---|---|---|
-| **执行层 S11–S14** | 🟢 全线闭合 + 实测通过 | 沙箱/MCP/内置工具均已真实联调，Bug 全修 |
-| **S15 MCP 热加载** | 🟢 完成 | CRUD 后无需重启，已落档 §6.26 + 切片计划 |
-| MVP 主线 S1–S15 | 🟢 基本完成 | 圆桌/扇出/多 bot/配方 L1–L4/历史重试/执行层/MCP 热加载全通 |
-| **无在途切片** | ⚪ 待定方向 | 下一步是开放议题，非排队中的刀（见下） |
+| **执行层 S11–S15** | 🟢 全线闭合 + 实测通过 | 沙箱/MCP/内置工具/热加载均已真实联调 |
+| **S16 工具空转修复** | 🟢 离线完成 / 🟡 待真模型验 | 纯聊不再空转调工具（a 防空转 + b 准入门），落档 §6.27 |
+| MVP 主线 S1–S16 | 🟢 基本完成 | 圆桌/扇出/多 bot/配方 L1–L4/历史重试/执行层/MCP 热加载/工具空转修复全通 |
+| **无在途切片** | ⚪ 待定方向 | 下一步是开放议题（见下） |
 | 子群/群递归 S5.6 | 🟡 设计中 | `docs/子群对话.md`（草稿未跟踪）；todo 第 2 条 |
 | 流式体感 bug | 🔴 待复现 | todo 第 1 条，与记忆 [[chorus-model-and-latency]] 冲突 |
 
@@ -39,20 +39,21 @@
 
 ## 🔥 热内存（楔合点 = 从这接手）
 
-**本会话做了什么**：
+**本会话做了什么**：诊断并修掉「圆桌问无关问题，每个 AI 发言前空转 6 步反复 list 目录」的 bug。
 
-1. **S15 MCP 注册表热加载**：
-   - `execution_mcp.py:McpRegistry.reload(specs)` — 原地热更新（替换 `_specs` + 重 `refresh()`）
-   - `plan_stream.py:default_plan_stream` — `tool_catalog` 支持 callable，每次调用实时求值
-   - `service.py` — `app.state.mcp_registry` 挂 registry；CRUD 三端点 commit 后调 `_reload_mcp_registry`
-   - 新增测试 2 条；全量 **322 passed, 5 skipped**（A3 零回归）
+- **§6.27 决策落档**：工具阶段准入门（纯聊不空转）。三根因：§6.24 β 每轮无条件跑 ReAct + planner 偏用工具 + scratchpad 对 MCP 渲染坏。
+- **S16a**（防空转，离线确定）：`plan_stream.py:_render_scratchpad` 用真 `tool_name`+args（修硬编码 `sandbox_exec command=`）；`turn.py:_run_tool_phase` 循环挡重复 intent；`_PLAN_FINAL` 加"不需工具直接 final"出口。
+- **S16b**（治本）：`plan_stream.py:default_tool_gate` 廉价单一职责准入门；`turn.py:turn(tool_gate=)` 工具阶段前先判，不需→跳过直接发言；`recipes/roundtable.py` + `service.py` wiring（server.py 零改，gate 从 `plan_model` 自动建）。
+- 全量 **330 passed, 5 skipped**（A3 零回归）。已 commit `a52e1cf`。
 
-2. **落档**：
-   - `docs/代码链路.md` — 追加 2026-06-08 条目
-   - `docs/技术方案-基于AstrBot的MVP实现.md` — 新增 §6.26 决策
-   - `docs/切片计划-基于AstrBot的MVP.md` — 新增 S15 ✅
+**工作树**：干净（仅剩未跟踪草稿，见下）。
 
-**工作树**：干净，无未提交改动。仅剩三个未跟踪草稿（见下）。
+---
+
+## ✅ 下一步（可直接接手）
+
+1. **验证 S16 真模型行为**（判据③未达）：起服 + `CHORUS_RUN_SMOKE=1` 跑 `tests/nodes/test_plan_stream.py::test_smoke_real_tool_gate_skips_chat`（真 kimi 对闲聊判 False）；或圆桌问无关问题手动复现，确认不再 list 空转。
+2. 或挑下方开放议题之一推进。
 
 ---
 
@@ -70,8 +71,7 @@
 
 - `todo.md` / `todo.txt` — 待办笔记
 - `docs/子群对话.md` — S5.6 群递归设计草稿
-
-（sqlite-shm/wal 已被 `.gitignore` 永久挡住，不再冒头。）
+- `start.bat` — 启动脚本
 
 ---
 
